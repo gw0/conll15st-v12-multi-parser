@@ -147,8 +147,8 @@ class CoNLL15stCorpus(object):
             yield document_level
 
 
-def load_words(dataset_dir, parses_ffmt=None, raw_ffmt=None):
-    """Load CoNLL15st corpus words by document id.
+def load_words_all(dataset_dir, parses_ffmt=None, raw_ffmt=None):
+    """Load all CoNLL15st corpus words by document id.
 
     Example output:
 
@@ -166,14 +166,14 @@ def load_words(dataset_dir, parses_ffmt=None, raw_ffmt=None):
 
     words_it = CoNLL15stCorpus(dataset_dir, parses_ffmt=parses_ffmt, raw_ffmt=raw_ffmt, with_document=True, with_paragraph=False, with_sentence=False, word_split="-|\\\\/", word_meta=True)
 
-    words = {}
+    words_all = {}
     for doc in words_it:
         doc_id = doc[0]['DocID']
 
         # store by document id
-        words[doc_id] = doc
+        words_all[doc_id] = doc
 
-    return words
+    return words_all
 
 
 if __name__ == '__main__':
