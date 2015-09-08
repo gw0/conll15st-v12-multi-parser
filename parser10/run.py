@@ -13,6 +13,9 @@ import logging
 import os
 import resource
 import time
+import numpy as np
+import theano
+import theano.tensor as T
 
 import arch
 import conll15st_relations
@@ -105,56 +108,174 @@ class Stats(object):
 
 ### Load CoNLL15st dataset
 
-def load(dataset_dir, word2vec_bin, word2vec_dim, tag_to_j):
+def build_word2id(words_all, max_vocab_size=None, min_count=0, word2id=None):
+    """Build vocabulary index for all words."""
+    if word2id is None:
+        word2id = {}
+
+    # count word occurrences
+    vocab_cnts = {}
+    for doc_id in words_all:
+        for word in words_all[doc_id]:
+            try:
+                vocab_cnts[word['Text']] += 1
+            except KeyError:
+                vocab_cnts[word['Text']] = 1
+
+    # ignore words with low occurrences
+    for w, cnt in vocab_cnts.iteritems():
+        if cnt < min_count:
+            del vocab_cnts[w]
+
+    # rank words by decreasing occurrences and use as index
+    word2id_rev = [''] + sorted(vocab_cnts, key=vocab_cnts.get, reverse=True)
+    if max_vocab_size is not None:
+        word2id_rev = word2id_rev[:max_vocab_size]
+
+    # mapping of words to vocabulary indexes
+    word2id.update([ (w, i) for i, w in enumerate(word2id_rev) ])
+    return word2id
+
+
+def build_pos2id(words_all, max_pos_size=None, min_count=0, pos2id=None):
+    """Build POS tags index for all words."""
+    if pos2id is None:
+        pos2id = {}
+
+    # count POS tags occurrences
+    pos_cnts = {}
+    for doc_id in words_all:
+        for word in words_all[doc_id]:
+            try:
+                pos_cnts[word['PartOfSpeech']] += 1
+            except KeyError:
+                pos_cnts[word['PartOfSpeech']] = 1
+
+    # ignore POS tags with low occurrences
+    for w, cnt in pos_cnts.iteritems():
+        if cnt < min_count:
+            del pos_cnts[w]
+
+    # rank POS tags by decreasing occurrences and use as index
+    pos2id_rev = [''] + sorted(pos_cnts, key=pos_cnts.get, reverse=True)
+    if max_pos_size is not None:
+        pos2id_rev = pos2id_rev[:max_pos_size]
+
+    # mapping of POS tags to indexes
+    pos2id.update([ (w, i) for i, w in enumerate(pos2id_rev) ])
+    return pos2id
+
+
+def build_x_vocab(doc_ids, words_all, word2id):
+    """Prepare numpy array for x_vocab (doc, time, vocab)."""
+
+    x_vocab = []
+    for doc_id in doc_ids:
+        doc_vocab = []
+        for word in words_all[doc_id]:
+            # map words to vocabulary indexes
+            try:
+                doc_vocab.append(word2id[word['Text']])
+            except KeyError:  # missing in vocabulary
+                doc_vocab.append(word2id[''])
+
+        # store as numpy array
+        x_vocab.append(np.asarray(doc_vocab, dtype=theano.config.floatX))
+    return x_vocab
+
+
+def gen_pairs_window(seq1, seq2=None, window_size=4, window_offsets=None, padding=None):
+    """Generate seq1-seq2 pairs where seq2 is within sliding window of seq1 element."""
+    if seq2 is None:
+        seq2 = seq1
+    if window_offsets is None:
+        window_offsets = range(-window_size // 2, window_size // 2 + 1)
+        if window_size % 2 == 0:
+            del window_offsets[window_size // 2]
+
+    # padding for seq2
+    window_min = min(window_offsets)
+    window_max = max(window_offsets)
+    seq2 = [padding] * -window_min + seq1 + [padding] * window_max
+
+    # generate seq1-seq2 pairs in sliding window
+    pairs_off = [ zip(seq1, seq2[off - window_min:])  for off in window_offsets ]
+    pairs = map(list, zip(*pairs_off))
+    return pairs
+
+
+def build_y_skipgram(doc_ids, words_all, window_size):
+    """Prepare numpy array for y_skipgram (doc, time, window, SG label)."""
+
+    y_skipgram = []
+    for doc_id in doc_ids:
+        # fill word-context pair labels for skip-gram model
+        pairs = gen_pairs_window(words_all[doc_id], window_size=window_size)
+        for i in range(len(pairs)):
+            for j in range(len(pairs[0])):
+                pairs[i][j] = 1
+
+        # store as numpy array
+        y_skipgram.append(np.asarray(pairs, dtype=theano.config.floatX))
+    return y_skipgram
+
+
+def build_y_pos(doc_ids, words_all, pos2id):
+    """Prepare numpy array for y_pos (doc, time, POS tag)."""
+
+    y_pos = []
+    for doc_id in doc_ids:
+        doc_pos = []
+        for word in words_all[doc_id]:
+            # map POS tags to indexes
+            try:
+                doc_pos.append(pos2id[word['PartOfSpeech']])
+            except KeyError:  # missing in index
+                doc_pos.append(pos2id[''])
+
+        # store as numpy array
+        y_pos.append(np.asarray(doc_pos, dtype=theano.config.floatX))
+    return y_pos
+
+
+def load(experiment_dir, dataset_dir, vocab_size=None, skipgram_window_size=4):
     """Load PDTB data and transform it to numerical form."""
 
+    # load all relations by document id
+    relations_all = conll15st_relations.load_relations_all(dataset_dir)
+    relations_all = conll15st_relations.conv_tokenlists(relations_all)
+    relations_all = conll15st_relations.conv_sensenum(relations_all)
 
+    # load all words by document id
+    words_all = conll15st_words.load_words_all(dataset_dir)
+    words_all = conll15st_relations.conv_linkers_to_tags(words_all, relations_all)
 
-    # load relations by document id
-    relations = conll15st_relations.load_relations(dataset_dir)
+    # build vocabulary index
+    word2id = build_word2id(words_all, max_vocab_size=vocab_size)
 
-    # load words by document id
-    words = conll15st_words.load_words(dataset_dir)
-    words = conll15st_relations.conv_linkers_to_tags(words, relations)
+    # build POS tags index
+    pos2id = build_pos2id(words_all)
 
+    # fix order of document ids
+    doc_ids = [ doc_id  for doc_id in words_all if doc_id in relations_all ]
 
+    # prepare numpy for x_vocab (doc, time, vocab)
+    # (vocabulary indexes of words per document)
+    x_vocab = build_x_vocab(doc_ids, words_all, word2id)
 
-    # prepare mapping vocabulary to word2vec vectors
-    map_word2vec = joblib.load("./ex02_model/map_word2vec.dump")  #XXX
+    # prepare numpy for y_skipgram (doc, time, window, SG label)
+    # (word-context pair labels for skip-gram model without negative sampling per document)
+    y_skipgram = build_y_skipgram(doc_ids, words_all, window_size=skipgram_window_size)
 
-    # load words from PDTB parses
-    words = load_words(pdtb_dir, relations)
+    # prepare numpy for y_pos (doc, time, POS tag)
+    # (POS tags of words per document)
+    y_pos = build_y_pos(doc_ids, words_all, pos2id)
 
-    # prepare numeric form
-    x = []
-    y = []
-    doc_ids = []
-    for doc_id, doc in words.iteritems():
-        doc_x = []
-        doc_y = []
-        for word in doc:
-            # map text to word2vec
-            try:
-                doc_x.append(map_word2vec[word['Text']])
-            except KeyError:  # missing in vocab
-                doc_x.append(np.zeros(word2vec_dim))
+    # prepare numpy for y_relations ([sense], doc, time, window, relation label)
+    # (word-word pair labels for discourse relations per relation sense and document)
+    y_relations = []  #TODO
 
-            # map tags to vector
-            tags = [0.] * len(tag_to_j)
-            for tag, count in word['Tags'].iteritems():
-                tags[tag_to_j[tag]] = float(count)
-            doc_y.append(tags)
-
-            #print word['Text'], word['Tags']
-            #print word['Text'], doc_x[-1][0:1], doc_y[-1]
-
-        x.append(np.asarray(doc_x, dtype=theano.config.floatX))
-        y.append(np.asarray(doc_y, dtype=theano.config.floatX))
-        doc_ids.append(doc_id)
-        if doc_id not in relations:
-            relations[doc_id] = []
-
-    return x, y, doc_ids, words, relations
+    return x_vocab, y_skipgram, y_pos, y_relations, doc_ids, words_all, relations_all, word2id, pos2id
 
 
 ### Main
@@ -175,18 +296,24 @@ if __name__ == '__main__':
     args = argp.parse_args()
 
     # defaults
+    vocab_size = 10000
+    skipgram_window_size = 4
+
+    epochs = 10
+
     stats_csv = "{}/stats.csv".format(args.experiment_dir)
     weights_hdf5 = "{}/weights.hdf5".format(args.experiment_dir)
     word2vec_bin = "./GoogleNews-vectors-negative300.bin.gz"
     word2vec_dim = 300
-    vocabulary_n = 10000
 
-    epochs = 10
+    # load datasets
+    log.info("load datasets")
+    x_vocab, y_skipgram, y_pos, y_relations, doc_ids, words_all, relations_all, word2id, pos2id = load(args.experiment_dir, args.train_dir, vocab_size=vocab_size, skipgram_window_size=skipgram_window_size)
+    exit()    #TODO
 
     # build model
     log.info("build model")
-    stats = Stats(experiment=args.experiment_dir, train_dir=args.train_dir, valid_dir=args.valid_dir)
-    model = arch.build(vocabulary_n, word2vec_dim)
+    model = arch.build(vocab_size, word2vec_dim)
 
     model.get_config(verbose=1)
     from keras.utils.dot_utils import Grapher
@@ -194,6 +321,7 @@ if __name__ == '__main__':
     grapher.plot(model, "{}/model.png".format(args.experiment_dir))
 
     # initialize model
+    stats = Stats(experiment=args.experiment_dir, train_dir=args.train_dir, valid_dir=args.valid_dir)
     if not os.path.isdir(args.experiment_dir):
         log.info("initialize new model")
         stats.save(stats_csv)
