@@ -13,23 +13,56 @@ from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
 
 
-def build(vocabulary_n, embedding_dim):
-    """Build model with one input and layer-wise outputs."""
+def build():
+
+    vocab_size = 10000
+    embedding_dim = 3
+
+    skipgram_window = 2
+    relations_window = 2
 
     model = Graph()
-    model.add_input(name='word', ndim=2)
 
-    # word embedding lookup table
-    model.add_node(Embedding(vocabulary_n, embedding_dim), name='embedding', input='word')
+    # inputs
+    model.add_input(name='x_word', input_shape=(None,), dtype='int')
+    model.add_input(name='x_rand', input_shape=(None,))
 
-    # skip-gram with negative sampling XXX
-    skipgram_window = 4
-    skipgram_negative = 5
-    model.add_node(LSTM(embedding_dim, skipgram_window * embedding_dim), name='skipgram', input='embedding')
-    model.add_output(name='skipgram_out', input='skipgram')
+    # word embedding lookup table (shared layer 1)
+    model.add_node(Embedding(vocab_size, embedding_dim), name='layer_1', input='x_word')
 
-    model.compile(optimizer='rmsprop', loss={'skipgram_out':'mse'})
+    # skip-gram model context embedding lookup table
+    model.add_node(Embedding(vocab_size, embedding_dim), name='context_emb', inputs=['x_context', 'x_rand'], merge_mode='concat')
+
+    # skip-gram model word-context pairs in window
+    skipgram_window
+
+    # skip-gram model dot product
+    dot product
+    model.add_node(Merge([], mode='mul'), name='skipgram', input='skipgram_pair')
+
+    # forward LSTM (shared layer 2)
+    model.add_node(LSTM(embedding_dim, embedding_dim), name='layer_2', input='layer_1')
+
+    # POS tag dense neural networks
+    model.add_node(Dense(2 * embedding_dim), name='pos', input='layer_2')
+
+    # discourse relations word-word pairs in window
+    relation_window
+
+    # discourse relations dense neural network
+    model.add_node(Dense(embedding_dim), name='relation', input='relation_pair')
+
+    # outputs
+    model.add_output(name='y_skipgram', input='skipgram')
+    model.add_output(name='y_pos', input='pos')
+    model.add_output(name='y_relation', input='relation')
+
+    model.compile(optimizer='rmsprop', loss={'y_skipgram':'mse'})
     return model
+
+
+def buildx(vocabulary_n, embedding_dim):
+    """Build model with one input and layer-wise outputs."""
 
     model = models.Sequential()
     model.add(recurrent.SimpleRNN(x_dim, inner_dim, init='glorot_uniform', inner_init='orthogonal', activation='sigmoid', weights=None, truncate_gradient=-1, return_sequences=True))

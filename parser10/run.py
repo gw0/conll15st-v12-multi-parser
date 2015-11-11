@@ -108,7 +108,7 @@ class Stats(object):
 
 ### Load CoNLL15st dataset
 
-def build_word2id(words_all, max_vocab_size=None, min_count=0, word2id=None):
+def build_word2id(words_all, max_vocab_size=None, min_count=2, word2id=None):
     """Build vocabulary index for all words."""
     if word2id is None:
         word2id = {}
@@ -123,16 +123,14 @@ def build_word2id(words_all, max_vocab_size=None, min_count=0, word2id=None):
                 vocab_cnts[word['Text']] = 1
 
     # ignore words with low occurrences
-    for w, cnt in vocab_cnts.iteritems():
-        if cnt < min_count:
-            del vocab_cnts[w]
+    vocab_cnts = dict([ (w, cnt)  for w, cnt in vocab_cnts.iteritems() if cnt >= min_count ])
 
     # rank words by decreasing occurrences and use as index
     word2id_rev = [''] + sorted(vocab_cnts, key=vocab_cnts.get, reverse=True)
     if max_vocab_size is not None:
         word2id_rev = word2id_rev[:max_vocab_size]
 
-    # mapping of words to vocabulary indexes
+    # mapping of words to vocabulary ids
     word2id.update([ (w, i) for i, w in enumerate(word2id_rev) ])
     return word2id
 
@@ -161,27 +159,27 @@ def build_pos2id(words_all, max_pos_size=None, min_count=0, pos2id=None):
     if max_pos_size is not None:
         pos2id_rev = pos2id_rev[:max_pos_size]
 
-    # mapping of POS tags to indexes
+    # mapping of POS tags to ids
     pos2id.update([ (w, i) for i, w in enumerate(pos2id_rev) ])
     return pos2id
 
 
-def build_x_vocab(doc_ids, words_all, word2id):
-    """Prepare numpy array for x_vocab (doc, time, vocab)."""
+def build_x_word(doc_ids, words_all, word2id):
+    """Prepare numpy array for x_word (doc, time, word id)."""
 
-    x_vocab = []
+    x_word = []
     for doc_id in doc_ids:
-        doc_vocab = []
+        word_ids = []
         for word in words_all[doc_id]:
-            # map words to vocabulary indexes
+            # map words to vocabulary ids
             try:
-                doc_vocab.append(word2id[word['Text']])
+                word_ids.append(word2id[word['Text']])
             except KeyError:  # missing in vocabulary
-                doc_vocab.append(word2id[''])
+                word_ids.append(word2id[''])
 
         # store as numpy array
-        x_vocab.append(np.asarray(doc_vocab, dtype=theano.config.floatX))
-    return x_vocab
+        x_word.append(np.asarray(word_ids, dtype=theano.config.floatX))
+    return x_word
 
 
 def gen_pairs_window(seq1, seq2=None, window_size=4, window_offsets=None, padding=None):
@@ -227,7 +225,7 @@ def build_y_pos(doc_ids, words_all, pos2id):
     for doc_id in doc_ids:
         doc_pos = []
         for word in words_all[doc_id]:
-            # map POS tags to indexes
+            # map POS tags to ids
             try:
                 doc_pos.append(pos2id[word['PartOfSpeech']])
             except KeyError:  # missing in index
@@ -238,8 +236,8 @@ def build_y_pos(doc_ids, words_all, pos2id):
     return y_pos
 
 
-def load(experiment_dir, dataset_dir, vocab_size=None, skipgram_window_size=4):
-    """Load PDTB data and transform it to numerical form."""
+def load(dataset_dir, vocab_size=None, skipgram_window_size=4):
+    """Load CoNLL15st dataset and transform it to numerical form."""
 
     # load all relations by document id
     relations_all = conll15st_relations.load_relations_all(dataset_dir)
@@ -250,32 +248,28 @@ def load(experiment_dir, dataset_dir, vocab_size=None, skipgram_window_size=4):
     words_all = conll15st_words.load_words_all(dataset_dir)
     words_all = conll15st_relations.conv_linkers_to_tags(words_all, relations_all)
 
-    # build vocabulary index
+    # build word vocabulary index
     word2id = build_word2id(words_all, max_vocab_size=vocab_size)
 
     # build POS tags index
     pos2id = build_pos2id(words_all)
 
-    # fix order of document ids
+    # fixate order of document ids
     doc_ids = [ doc_id  for doc_id in words_all if doc_id in relations_all ]
 
-    # prepare numpy for x_vocab (doc, time, vocab)
-    # (vocabulary indexes of words per document)
-    x_vocab = build_x_vocab(doc_ids, words_all, word2id)
+    # word ids in numpy (doc, time, word id)
+    x_word = build_x_word(doc_ids, words_all, word2id)
 
-    # prepare numpy for y_skipgram (doc, time, window, SG label)
-    # (word-context pair labels for skip-gram model without negative sampling per document)
+    # skip-gram model word-context pair labels in numpy (doc, time, window, SG label)
     y_skipgram = build_y_skipgram(doc_ids, words_all, window_size=skipgram_window_size)
 
-    # prepare numpy for y_pos (doc, time, POS tag)
-    # (POS tags of words per document)
+    # POS tag ids of words in numpy (doc, time, POS tag)
     y_pos = build_y_pos(doc_ids, words_all, pos2id)
 
-    # prepare numpy for y_relations ([sense], doc, time, window, relation label)
-    # (word-word pair labels for discourse relations per relation sense and document)
-    y_relations = []  #TODO
+    # discourse relations word-word pair labels per relation sense in numpy ([sense], doc, time, window, relation label)
+    y_relation = []  #TODO
 
-    return x_vocab, y_skipgram, y_pos, y_relations, doc_ids, words_all, relations_all, word2id, pos2id
+    return x_word, y_skipgram, y_pos, y_relation, doc_ids, words_all, relations_all, word2id, pos2id
 
 
 ### Main
@@ -308,7 +302,16 @@ if __name__ == '__main__':
 
     # load datasets
     log.info("load datasets")
-    x_vocab, y_skipgram, y_pos, y_relations, doc_ids, words_all, relations_all, word2id, pos2id = load(args.experiment_dir, args.train_dir, vocab_size=vocab_size, skipgram_window_size=skipgram_window_size)
+    x_word, y_skipgram, y_pos, y_relation, doc_ids, words_all, relations_all, word2id, pos2id = load(args.train_dir, vocab_size=vocab_size, skipgram_window_size=skipgram_window_size)
+    rand_size = max([ len(word_ids) for word_ids in x_word ])
+    x_rand = np.random.randint(low=1, high=vocab_size, size=(rand_size,))
+
+    print "x_word:", x_word[0].shape, sum([ x.nbytes  for x in x_word ])
+    print "vocab_size:", len(word2id)
+    print "y_skipgram:", y_skipgram[0].shape, sum([ y.nbytes  for y in y_skipgram ])
+    print "y_pos:", y_pos[0].shape, sum([ y.nbytes  for y in y_pos ])
+    print "pos_size:", len(pos2id)
+    print "y_relation:", y_relation
     exit()    #TODO
 
     # build model
@@ -336,6 +339,7 @@ if __name__ == '__main__':
     while epoch < epochs:
         log.info("train epoch {}".format(epoch))
 
+        #keras.callbacks.ModelCheckpoint(filepath, verbose=0, save_best_only=False)
         model.fit()  #TODO
         #stats.append({
         #    "epoch": epoch,
