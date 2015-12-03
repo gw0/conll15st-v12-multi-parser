@@ -11,6 +11,8 @@ import argparse
 import json
 
 
+### Tag converters
+
 def rts_to_tag(relation):
     """Convert relation type and sense to tag."""
 
@@ -19,21 +21,39 @@ def rts_to_tag(relation):
     return ":".join([rtype, rsense])
 
 
-def rtsnp_to_tag(relation, rpart):
-    """Convert relation type, sense, sense number, and part to tag."""
+def rtsns_to_tag(relation, rspan):
+    """Convert relation type, sense, sense number, and span to tag."""
 
     rtype = relation['Type']
     rsense = relation['Sense'][0]  # only first sense
     rnum = relation['SenseNum'][0]  # only first sense
-    return ":".join([rtype, rsense, rnum, rpart])
+    return ":".join([rtype, rsense, rnum, rspan])
 
 
-def load_relations_all(dataset_dir, relations_ffmt=None):
+def tag_to_rtsns(tag):
+    """Convert tag to relation type, sense, sense number, and span."""
+
+    rtype, rsense, rnum, rspan = tag.split(":")
+    return rtype, rsense, rnum, rspan
+
+
+def filter_tags(tags, prefixes=None):
+    """Filter list of relation tags matching specified prefixes."""
+
+    if prefixes is not None:
+        # filter by specified relation tag prefixes
+        tags = [ t  for t in tags if any([ t.startswith(p)  for p in prefixes ]) ]
+    return tags
+
+
+### CoNLL15st relations
+
+def load_relations(dataset_dir, relations_ffmt=None):
     """Load all PDTB-style discourse relations by document id.
 
     Example output:
 
-        relations_all[doc_id][0] = {
+        all_relations[doc_id][0] = {
             'Arg1': {'CharacterSpanList': [[2493, 2517]], 'RawText': 'and told ...', 'TokenList': [[2493, 2496, 465, 15, 8], [2497, 2501, 466, 15, 9], ...]},
             'Arg2': {'CharacterSpanList': [[2526, 2552]], 'RawText': "they're ...", 'TokenList': [[2526, 2530, 472, 15, 15], [2530, 2533, 473, 15, 16], ...]},
             'Connective': {'CharacterSpanList': [[2518, 2525]], 'RawText': 'because', 'TokenList': [[2518, 2525, 471, 15, 14]]},
@@ -49,7 +69,7 @@ def load_relations_all(dataset_dir, relations_ffmt=None):
     # load all relations
     relations_json = relations_ffmt.format(dataset_dir)
     f = open(relations_json, 'r')
-    relations_all = {}
+    all_relations = {}
     for line in f:
         relation = json.loads(line)
 
@@ -63,19 +83,19 @@ def load_relations_all(dataset_dir, relations_ffmt=None):
 
         # store by document id
         try:
-            relations_all[relation['DocID']].append(relation)
+            all_relations[relation['DocID']].append(relation)
         except KeyError:
-            relations_all[relation['DocID']] = [relation]
+            all_relations[relation['DocID']] = [relation]
     f.close()
-    return relations_all
+    return all_relations
 
 
-def conv_tokenlists(relations_all):
-    """Convert all token lists from detailed/gold to token id format.
+def conv_span_tokenlist_format(all_relations):
+    """Convert all token lists from detailed/gold to token id format and add min/max token id and count.
 
     Example output:
 
-        relations_all[doc_id][0] = {
+        all_relations[doc_id][0] = {
             'Arg1': {'CharacterSpanList': [[2493, 2517]], 'RawText': 'and told ...', 'TokenList': [465, 466, ...]},
             'Arg2': {'CharacterSpanList': [[2526, 2552]], 'RawText': "they're ...", 'TokenList': [472, 473, ...]},
             'Connective': {'CharacterSpanList': [[2518, 2525]], 'RawText': 'because', 'TokenList': [471]},
@@ -86,27 +106,27 @@ def conv_tokenlists(relations_all):
         }
     """
 
-    for doc_id in relations_all:
-        for relation in relations_all[doc_id]:
+    for doc_id in all_relations:
+        for relation in all_relations[doc_id]:
             # convert from detailed/gold to token id format
             relation['Arg1']['TokenList'] = [ t[2]  for t in relation['Arg1']['TokenList'] ]
             relation['Arg2']['TokenList'] = [ t[2]  for t in relation['Arg2']['TokenList'] ]
             relation['Connective']['TokenList'] = [ t[2]  for t in relation['Connective']['TokenList'] ]
 
             # add token id min and max and token count
-            token_list = sum([ relation[part]['TokenList']  for part in ['Arg1', 'Arg2', 'Connective'] ], [])
+            token_list = sum([ relation[span]['TokenList']  for span in ['Arg1', 'Arg2', 'Connective'] ], [])
             relation['TokenMin'] = min(token_list)
             relation['TokenMax'] = max(token_list)
             relation['TokenCount'] = len(token_list)
-    return relations_all
+    return all_relations
 
 
-def conv_sensenum(relations_all, filter_tags=None):
-    """Enumerate all relations sense numbers and order by decreasing token count.
+def add_relation_sensenum(all_relations, filter_prefixes=None):
+    """Add enumerated relations sense numbers ordered in decreasing token count.
 
     Example output:
 
-        relations_all[doc_id][0] = {
+        all_relations[doc_id][0] = {
             ...
             'SenseNum': [1],
         }
@@ -114,13 +134,13 @@ def conv_sensenum(relations_all, filter_tags=None):
 
     # order and filter relations
     relations_ord = {}
-    for doc_id in relations_all:
+    for doc_id in all_relations:
         # order by increasing token count
-        relations_all[doc_id].sort(key=lambda r: r['TokenCount'])
+        all_relations[doc_id].sort(key=lambda r: r['TokenCount'])
 
         relations_ord[doc_id] = []
         rnums = {}
-        for relation in relations_all[doc_id]:
+        for relation in all_relations[doc_id]:
             # add sense count number
             rnum_key = rts_to_tag(relation)
             try:
@@ -129,20 +149,14 @@ def conv_sensenum(relations_all, filter_tags=None):
                 rnums[rnum_key] = 1
             relation['SenseNum'] = [str(rnums[rnum_key])]
 
-            if filter_tags is None:
-                # no filter
+            tags = [ rtsns_to_tag(relation, span)  for span in ['Arg1', 'Arg2', 'Connective'] ]
+            if filter_tags(tags, filter_prefixes):  # relation found
                 relations_ord[doc_id].append(relation)
-            else:
-                # filter by specified relation tags
-                for rpart in ['Arg1', 'Arg2', 'Connective']:
-                    if rtsnp_to_tag(relation, rpart) in filter_tags:  # relation found
-                        relations_ord[doc_id].append(relation)
-                        break  # only once
     return relations_ord
 
 
-def conv_linkers_to_tags(words_all, relations_all):
-    """Convert all linkers on CoNLL15st corpus words to relation tags.
+def add_relation_tags(all_words, all_relations):
+    """Convert linkers format from CoNLL15st words to relation tags.
 
     Example output:
 
@@ -153,26 +167,26 @@ def conv_linkers_to_tags(words_all, relations_all):
         }
     """
 
-    lpart_to_rpart = {"arg1": "Arg1", "arg2": "Arg2", "conn": "Connective"}
+    linker_to_span = {"arg1": "Arg1", "arg2": "Arg2", "conn": "Connective"}
 
-    # convert linkers to relation tags on each word
-    for doc_id in words_all:
-        for word in words_all[doc_id]:
+    # convert linker ids to relation tags on each word
+    for doc_id in all_words:
+        for word in all_words[doc_id]:
             word['Tags'] = {}
-            for linker in word['Linkers']:  # get relation ids for each word
-                lpart, rid = linker.split("_")
-                rpart = lpart_to_rpart[lpart]
+            for linker in word['Linkers']:  # get linker ids for each word
+                linker_span, relation_id = linker.split("_")
+                span = linker_to_span[linker_span]
 
                 # find by relation id
-                for relation in relations_all[doc_id]:
-                    if rid == str(relation['ID']):  # found relation id
-                        tag = rtsnp_to_tag(relation, rpart)
+                for relation in all_relations[doc_id]:
+                    if relation_id == str(relation['ID']):  # found relation id
+                        tag = rtsns_to_tag(relation, span)
                         try:
-                            word['Tags'][tag] += 1
+                            word['Tags'][tag] += 1  # weird, but in CoNLL15st train dataset
                         except KeyError:
                             word['Tags'][tag] = 1
                         break  # only once
-    return words_all
+    return all_words
 
 
 if __name__ == '__main__':
@@ -183,9 +197,9 @@ if __name__ == '__main__':
     args = argp.parse_args()
 
     # iterate through all CoNLL15st relations by document id
-    relations_all = load_relations_all(args.dataset_dir)
-    relations_all = conv_tokenlists(relations_all)
-    relations_all = conv_sensenum(relations_all)
-    for doc_id in relations_all:
-        for relation in relations_all[doc_id]:
+    all_relations = load_relations(args.dataset_dir)
+    all_relations = conv_span_tokenlist_format(all_relations)
+    all_relations = add_relation_sensenum(all_relations)
+    for doc_id in all_relations:
+        for relation in all_relations[doc_id]:
             print(relation)

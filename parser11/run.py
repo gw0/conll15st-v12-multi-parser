@@ -180,6 +180,30 @@ def build_pos2id(all_words, max_size=None, min_count=0, pos2id=None):
     return pos2id
 
 
+def build_pdtbpair2id():
+    """Build PDTB-style discourse parsing span pairs index."""
+
+    pdtbpair2id = {
+        "Rest-Rest": 0,
+        "Arg1-Arg1": 1,
+        "Arg1-Arg2": 2,
+        "Arg1-Connective": 3,
+        "Arg1-Rest": 4,
+        "Arg2-Arg1": 5,
+        "Arg2-Arg2": 6,
+        "Arg2-Connective": 7,
+        "Arg2-Rest": 8,
+        "Connective-Arg1": 9,
+        "Connective-Arg2": 10,
+        "Connective-Connective": 11,
+        "Connective-Rest": 12,
+        "Rest-Arg1": 13,
+        "Rest-Arg2": 14,
+        "Rest-Connective": 15,
+    }
+    return pdtbpair2id
+
+
 ### Prepare NumPy arrays
 
 def conv_window_to_offsets(window_size, negative_samples, word_crop):
@@ -199,17 +223,19 @@ def build_x_word(doc_ids, all_words, word2id, word_crop, max_len):
     x_word_pad = []
     x_word_rand = []
     for doc_id in doc_ids:
-        word_ids = []
+        # map words to vocabulary ids
+        ids = []
         for word in all_words[doc_id][:word_crop]:
-            # map words to vocabulary ids
             try:
-                word_ids.append(word2id[word['Text']])
+                ids.append(word2id[word['Text']])
             except KeyError:  # missing in vocabulary
-                word_ids.append(word2id[""])
+                ids.append(word2id[""])
 
-        # store as numpy array with masked and random post-padding
-        x_word_pad.append(np.hstack([word_ids, np.zeros((max_len - len(word_ids),), dtype=np.int)]))
-        x_word_rand.append(np.hstack([word_ids, np.random.randint(1, word2id_size, size=max_len - len(word_ids))]))
+        # convert to numpy array with masked and random post-padding
+        x_word_pad.append(np.hstack([ids, np.zeros((max_len - len(ids),), dtype=np.int)]))
+        x_word_rand.append(np.hstack([ids, np.random.randint(1, len(word2id), size=max_len - len(ids))]))
+
+    # return as numpy array
     x_word_pad = np.asarray(x_word_pad)
     x_word_rand = np.asarray(x_word_rand)
     return x_word_pad, x_word_rand
@@ -220,46 +246,103 @@ def build_y_skipgram(x_word_pad, skipgram_offsets, max_len):
 
     y_skipgram = []
     for s in x_word_pad:
-        #pairs_off = [ zip(s, np.roll(s, -off))  for off in skipgram_offsets ]
-        #pairs = map(list, zip(*pairs_off))
-        #print pairs
-
-        pairs = [ [ (s[i] != 0 and s[(i + off) % len(s)] != 0)  for off in skipgram_offsets ]  for i in range(max_len) ]
+        # map word pairs with mask to binary skip-gram labels
+        pairs = [ [ (s[i] != 0 and s[(i + off) % max_len] != 0)  for off in skipgram_offsets ]  for i in range(max_len) ]
         y_skipgram.append(np.asarray(pairs))
+
+    # return as numpy array
     y_skipgram = np.asarray(y_skipgram)
     return y_skipgram
 
 
 def build_y_pos(doc_ids, all_words, pos2id, word_crop, max_len):
-    """Prepare output: POS tags (doc, time_pad, pos2id_size)."""
+    """Prepare output: POS tags (doc, time_pad, pos2id)."""
 
     y_pos = []
     for doc_id in doc_ids:
-        pos_ids = []
+        # map POS tags to ids
+        ids = []
         for word in all_words[doc_id][:word_crop]:
-            # map POS tags to one-hot encoding of ids
             try:
-                pos_ids.append(pos2id[word['PartOfSpeech']])
+                ids.append(pos2id[word['PartOfSpeech']])
             except KeyError:  # missing in index
-                pos_ids.append(pos2id[""])
+                ids.append(pos2id[""])
 
-        pos_binary = np.zeros((max_len, pos2id_size), dtype=np.int)
-        pos_binary[np.arange(max_len), np.hstack([pos_ids, np.zeros((max_len - len(pos_ids),), dtype=np.int)])] = 1
+        # map ids to one-hot encoding
+        onehot = np.zeros((max_len, len(pos2id)), dtype=np.int)
+        onehot[np.arange(max_len), np.hstack([ids, np.zeros((max_len - len(ids),), dtype=np.int)])] = 1
+        y_pos.append(onehot)
 
-        # store as numpy array
-        y_pos.append(pos_binary)
+    # return as numpy array
     y_pos = np.asarray(y_pos)
     return y_pos
 
-def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, word_crop, max_len):
-    """Prepare output: PDTB-style discourse relations (doc, time, offset, rpart_size)."""
+
+def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, filter_prefixes):
+    """Prepare output: PDTB-style discourse relation span pairs (doc, time, offset, pdtbpair2id)."""
 
     y_pdtbpair = []
     for doc_id in doc_ids:
-        pos_ids = []
-        for word in all_words[doc_id][:word_crop]:
-    y_pos = np.asarray(y_pos)
-    return y_pos
+        doc_len = len(all_words[doc_id])
+
+        # map word pairs with tags to PDTB-style span pair occurrences
+        pairs = np.zeros((max_len, len(pdtbpair_offsets), pdtbpair2id_size), dtype=np.int)
+        for i in range(max_len):  # iterate word 1
+
+            # filtered word 1 tags by specified relation tags
+            w1_tags = []
+            if i < word_crop and i < doc_len:
+                w1_tags = all_words[doc_id][i]['Tags'].keys()
+                w1_tags = conll15st_relations.filter_tags(w1_tags, filter_prefixes)
+
+            for off_i, off in enumerate(pdtbpair_offsets):  # iterate word 2
+                j = (i + off) % max_len
+                pdtbpair2id_key = None
+
+                # filtered word 2 tags by specified relation tags
+                w2_tags = []
+                if j < word_crop and j < doc_len:
+                    w2_tags = all_words[doc_id][j]['Tags'].keys()
+                    w2_tags = conll15st_relations.filter_tags(w2_tags, filter_prefixes)
+
+                # mark occurrences with word 1 and word 2
+                for w1_tag in w1_tags:
+                    w1_rtype, w1_rsense, w1_rnum, w1_rspan = conll15st_relations.tag_to_rtsns(w1_tag)
+
+                    # check if word 2 is in same relation
+                    pdtbpair2id_key = "{}-Rest".format(w1_rspan)
+                    for w2_tag in w2_tags:
+                        w2_rtype, w2_rsense, w2_rnum, w2_rspan = conll15st_relations.tag_to_rtsns(w2_tag)
+
+                        if w1_rtype == w2_rtype and w1_rsense == w2_rsense and w1_rnum == w2_rnum:
+                            pdtbpair2id_key = "{}-{}".format(w1_rspan, w2_rspan)
+                            break
+
+                    # update pair
+                    pairs[i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+
+                # else mark occurrences with only word 2
+                if not w1_tags:
+                    for w2_tag in w2_tags:
+                        w2_rtype, w2_rsense, w2_rnum, w2_rspan = conll15st_relations.tag_to_rtsns(w2_tag)
+
+                        # no word 1 tags
+                        pdtbpair2id_key = "Rest-{}".format(w2_rspan)
+
+                        # update pair
+                        pairs[i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+
+                # else mark no occurrences between word 1 and word 2
+                if pdtbpair2id_key is None:
+                    pdtbpair2id_key = "Rest-Rest"
+
+                    # update pair
+                    pairs[i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+        y_pdtbpair.append(pairs)
+
+    # return as numpy array
+    y_pdtbpair = np.asarray(y_pdtbpair)
+    return y_pdtbpair
 
 
 ### Main
@@ -290,24 +373,30 @@ if __name__ == '__main__':
     # defaults
     epochs = 1000
 
-    word_crop = 10  #= max([ len(s)  for s in train_words ])
+    word_crop = 1000  #= max([ len(s)  for s in train_words ])
     embedding_dim = 3
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 1  #skipgram_window_size
     skipgram_offsets = conv_window_to_offsets(skipgram_window_size, skipgram_negative_samples, word_crop)
     pos2id_size = 20  #= None is computed
-    pdtbpair2id_size = 16  # is fixed
-    pdtbpair_window_size = 2  #20
+    pdtbpair2id_size = 16  #=16 is fixed
+    pdtbpair_window_size = 4  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
+    pdtbpair_filter_prefixes = ["Explicit:Expansion.Conjunction"]
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
+
+    log.info("configuration ({})".format(args.experiment_dir))
+    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'pdtbpair_filter_prefixes', 'max_len']:
+        log.info("  {}: {}".format(var, eval(var)))
 
     # experiment files
     if not os.path.isdir(args.experiment_dir):
         os.makedirs(args.experiment_dir)
     word2id_pkl = "{}/word2id.pkl".format(args.experiment_dir)
     pos2id_pkl = "{}/pos2id.pkl".format(args.experiment_dir)
+    pdtbpair2id_pkl = "{}/pdtbpair2id.pkl".format(args.experiment_dir)
     model_yaml = "{}/model.yaml".format(args.experiment_dir)
     model_png = "{}/model.png".format(args.experiment_dir)
     stats_csv = "{}/stats.csv".format(args.experiment_dir)
@@ -318,35 +407,41 @@ if __name__ == '__main__':
     # load datasets
     log.info("load dataset for training ({})".format(args.train_dir))
     train_doc_ids, train_words, train_relations = load_conll15st(args.train_dir)
+    log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(train_doc_ids), sum([ len(s)  for s in train_words.itervalues() ]), sum([ len(s)  for s in train_relations.itervalues() ])))
 
     #log.info("load dataset for validation ({})".format(args.valid_dir))
     #valid_doc_ids, valid_words, valid_relations = load_conll15st(args.valid_dir)
+    #log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(valid_doc_ids), sum([ len(s)  for s in valid_words.itervalues() ]), sum([ len(s)  for s in valid_relations.itervalues() ])))
 
     #log.info("load dataset for testing ({})".format(args.test_dir))
     #test_doc_ids, test_words, test_relations = load_conll15st(args.test_dir)
+    #log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(test_doc_ids), sum([ len(s)  for s in test_words.itervalues() ]), sum([ len(s)  for s in test_relations.itervalues() ])))
 
     # build indexes
-    if not os.path.isfile(word2id_pkl) or not os.path.isfile(pos2id_pkl):
+    if not os.path.isfile(word2id_pkl) or not os.path.isfile(pos2id_pkl) or not os.path.isfile(pdtbpair2id_pkl):
         log.info("build indexes")
         word2id = build_word2id(train_words, max_size=word2id_size)
         pos2id = build_pos2id(train_words, max_size=pos2id_size)
+        pdtbpair2id = build_pdtbpair2id()
         with open(word2id_pkl, 'wb') as f:
             pickle.dump(word2id, f)
         with open(pos2id_pkl, 'wb') as f:
             pickle.dump(pos2id, f)
+        with open(pdtbpair2id_pkl, 'wb') as f:
+            pickle.dump(pdtbpair2id, f)
     else:
         log.info("load previous indexes ({})".format(args.experiment_dir))
         with open(word2id_pkl, 'rb') as f:
             word2id = pickle.load(f)
         with open(pos2id_pkl, 'rb') as f:
             pos2id = pickle.load(f)
-    word2id_size = len(word2id)
-    pos2id_size = len(pos2id)
-    log.info("  word2id size: {}, pos2id size: {}".format(word2id_size, pos2id_size))
+        with open(pdtbpair2id_pkl, 'rb') as f:
+            pdtbpair2id = pickle.load(f)
+    log.info("  word2id: {}, pos2id: {}, pdtbpair2id: {}".format(len(word2id), len(pos2id), len(pdtbpair2id)))
 
     # build model
     log.info("build model")
-    model = arch.build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, pdtbpair2id_size, pdtbpair_offsets)
+    model = arch.build(max_len, embedding_dim, len(word2id), skipgram_offsets, len(pos2id), len(pdtbpair2id), pdtbpair_offsets)
 
     # plot model
     with open(model_yaml, 'w') as f:
@@ -366,11 +461,13 @@ if __name__ == '__main__':
     if not os.path.isfile(stats_csv):
         log.info("initialize stats")
         stats.save(stats_csv)
-        epoch_i = -1
-        loss_best = float('inf')
     else:
         log.info("load previous stats ({})".format(args.experiment_dir))
         stats.load(stats_csv)
+
+    epoch_i = -1
+    loss_best = float('inf')
+    if stats.history:
         epoch_i = int(stats.history[-1]['epoch'])
         loss_avg = float(stats.history[-1]['loss_avg'])
         loss_best = loss_avg
@@ -403,7 +500,7 @@ if __name__ == '__main__':
             y_pos = build_y_pos(doc_ids, train_words, pos2id, word_crop, max_len)
             #print("y_pos:"); pprint(y_pos)
 
-            y_pdtbpair = build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, word_crop, max_len)
+            y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, pdtbpair_filter_prefixes)
             #print("y_pdtbpair:"); pprint(y_pdtbpair)
 
             # train on batch
@@ -452,7 +549,7 @@ if __name__ == '__main__':
         stats.save(stats_csv)
 
         # save best model
-        if loss_best is None or loss_avg < loss_best:
+        if loss_avg < loss_best:
             loss_best = loss_avg
             model.save_weights(weights_hdf5, overwrite=True)
 
