@@ -22,7 +22,7 @@ from keras.utils.visualize_util import plot
 import arch
 import conll15st_relations
 import conll15st_words
-import conll15st_scorer
+from conll15st_scorer import scorer
 
 
 ### Logging
@@ -352,44 +352,45 @@ def fitness_partial(pairs, offsets, pair2id, pair2id_weights, sets, update_sets)
     """Evaluate fitness difference after applying updates to pairwise occurrences."""
 
     fitness = 0.
-    for w1_rspan, w1_set in sets.items():
+    for w1_rspan, w1_set in update_sets.items():  # iterate over updates
         for w1_i in w1_set:
-            for w2_rspan, w2_set in update_sets.items():
-                for w2_i in w2_set:
-                    # evaluate w1-w2 pair occurrence
-                    try:
-                        off = (w2_i - w1_i) % max_len
-                        off_i = offsets.index(off)
-                    except ValueError:
-                        pass
-                    else:
+            for off_i, off in enumerate(offsets):  # iterate over offsets
+                w2_i = (w1_i + off) % max_len
+                for w2_rspan, w2_set in sets.items():  # iterate over sets
+                    if w2_i in w2_set:
+                        # evaluate w1-w2 pair occurrence
                         pair2id_key = "{}-{}".format(w1_rspan, w2_rspan)
                         fitness += pairs[w1_i, off_i, pair2id[pair2id_key]] * pair2id_weights[pair2id_key]
 
-                    # evaluate w2-w1 pair occurrence
-                    try:
-                        off = (w1_i - w2_i) % max_len
-                        off_i = offsets.index(off)
-                    except ValueError:
-                        pass
-                    else:
-                        pair2id_key = "{}-{}".format(w2_rspan, w1_rspan)
-                        fitness += pairs[w2_i, off_i, pair2id[pair2id_key]] * pair2id_weights[pair2id_key]
+                        # evaluate opposite w2-w1 pair occurrence
+                        try:
+                            off_j = offsets.index(-off)
+                        except ValueError:
+                            pass
+                        else:
+                            pair2id_key = "{}-{}".format(w2_rspan, w1_rspan)
+                            fitness += pairs[w2_i, off_j, pair2id[pair2id_key]] * pair2id_weights[pair2id_key]
     return fitness
 
 
-def extract_max_spans(pairs, offsets, pair2id, pair2id_weights, sets):
+def extract_max_spans(pairs, offsets, pair2id, pair2id_weights, sets, sets_max_len):
     """Extract max spans from pairwise occurrences."""
 
-    unknown_set = set([])
-    for s in sets.values():
-        unknown_set = unknown_set.union(s)
+    def explode_set(s, offsets, max_len):
+        return set([ (i + off) % max_len  for i in s for off in offsets ])
 
-    while unknown_set:
+    todo_set = set([])
+    for s in sets.values():
+        todo_set.update(explode_set(s, offsets, max_len))
+    for s in sets.values():
+        todo_set.difference_update(s)
+
+    while todo_set:
+        #print "todo_set", todo_set
 
         # find which word added to which set maximizes fitness
-        best_fitness = -float('inf')
-        for i in unknown_set:
+        best_fitness = 0.
+        for i in todo_set:
             # try adding to each set
             for k in sets.keys():
                 update_sets = {k: set([i])}
@@ -398,44 +399,35 @@ def extract_max_spans(pairs, offsets, pair2id, pair2id_weights, sets):
                     best_fitness = fitness
                     best_update_sets = update_sets
 
-        # reached maximal fitness
-        if best_fitness < 0.:
+        # reached maximal spans
+        if best_fitness <= 0.:
             break
+
+        #print "best_fitness", best_fitness, best_update_sets
 
         # add best word into best set
         for k, s in best_update_sets.items():
-            for i in s:
-                sets[k].add(i)
-                unknown_set.remove(i)
-                for off in offsets:
-                    j = (i + off) % max_len
-                    if not any([ (j in sets[k])  for k in sets.keys() ]):
-                        unknown_set.add(j)
+            sets[k].update(s)
+            if len(sets[k]) > sets_max_len[k]:  # heuristic for invalid sets
+                todo_set = set([])
+                break
+            todo_set.update(explode_set(s, offsets, max_len))
+        for s in sets.values():
+            todo_set.difference_update(s)
 
     # subtract extracted spans
-    for w1_rspan, w1_set in sets.items():
+    fitness = 0.
+    for w1_rspan, w1_set in sets.items():  # iterate over sets
         for w1_i in w1_set:
-            for w2_rspan, w2_set in sets.items():
-                for w2_i in w2_set:
-                    # subtract w1-w2 pair occurrence
-                    try:
-                        off = (w2_i - w1_i) % max_len
-                        off_i = offsets.index(off)
-                    except ValueError:
-                        pass
-                    else:
+            for off_i, off in enumerate(offsets):  # iterate over offsets
+                w2_i = (w1_i + off) % max_len
+                for w2_rspan, w2_set in sets.items():  # iterate over sets
+                    if w2_i in w2_set:
+                        # subtract w1-w2 pair occurrence
                         pair2id_key = "{}-{}".format(w1_rspan, w2_rspan)
+                        fitness += pairs[w1_i, off_i, pair2id[pair2id_key]]
                         pairs[w1_i, off_i, pair2id[pair2id_key]] -= 1.
-
-                    # subtract w2-w1 pair occurrence
-                    try:
-                        off = (w1_i - w2_i) % max_len
-                        off_i = offsets.index(off)
-                    except ValueError:
-                        pass
-                    else:
-                        pair2id_key = "{}-{}".format(w2_rspan, w1_rspan)
-                        pairs[w2_i, off_i, pair2id[pair2id_key]] -= 1.
+    sets['fitness'] = fitness  #XXX
     return sets
 
 
@@ -443,7 +435,7 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
     """Interpret pairwise occurrences as PDTB-style discourse relations."""
 
     pdtbpair2id_weights = {
-        "Rest-Rest": 0.05,
+        "Rest-Rest": 0.,
         "Arg1-Arg1": 1.,
         "Arg1-Arg2": 1.,
         "Arg1-Connective": 1.,
@@ -460,6 +452,13 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
         "Rest-Arg2": 0.05,
         "Rest-Connective": 0.05,
     }
+    sets_max_len = {  #XXX
+        'Arg1': 100,
+        'Arg2': 100,
+        'Connective': 10,
+        'Rest': 100,
+    }
+    max_relations = 10  #XXX
 
     all_relations = {}
     for d, doc_id in enumerate(doc_ids):
@@ -470,11 +469,11 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
         while True:
 
             # find best seeds for Arg1 and Arg2
-            best_fitness = -float('inf')
+            best_fitness = 0.
             arg1_seed = -float('inf')
             arg2_seed = -float('inf')
 
-            for i in range(max_len):  # iterate word 1
+            for i in range(min(doc_len, max_len)):  # iterate word 1
                 for off_i, off in enumerate(pdtbpair_offsets):  # iterate word 2
                     j = (i + off) % max_len
 
@@ -482,14 +481,14 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
                     if y_pdtbpair[d][i, off_i, pdtbpair2id["Arg1-Arg2"]] > best_fitness:
                         arg1_seed = i
                         arg2_seed = j
-                        best_fitness = y_pdtbpair[d][i, off_i, pdtbpair2id["Arg1-Arg2"]]
+                        best_fitness = y_pdtbpair[d][i, off_i, pdtbpair2id["Arg1-Arg2"]] * pdtbpair2id_weights["Arg1-Arg2"]
                     if y_pdtbpair[d][i, off_i, pdtbpair2id["Arg2-Arg1"]] > best_fitness:
                         arg1_seed = j
                         arg2_seed = i
-                        best_fitness = y_pdtbpair[d][i, off_i, pdtbpair2id["Arg2-Arg1"]]
+                        best_fitness = y_pdtbpair[d][i, off_i, pdtbpair2id["Arg2-Arg1"]] * pdtbpair2id_weights["Arg2-Arg1"]
 
             # no more relations of given relation type:sense
-            if best_fitness < 0.:
+            if best_fitness <= 0.:
                 break
 
             # greedy clustering on pairwise occurrences
@@ -499,7 +498,7 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
                 'Connective': set(),
                 'Rest': set(),
             }
-            sets = extract_max_spans(y_pdtbpair[d], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, sets)
+            sets = extract_max_spans(y_pdtbpair[d], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, sets, sets_max_len)
 
             # build PDTB-style relation
             arg1_token_list = sorted(set([ k  for i in sets['Arg1'] if i < doc_len for k in all_words[doc_id][i]['TokenList'] ]))
@@ -513,7 +512,17 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
             relation['Arg1'] = {'TokenList': arg1_token_list}
             relation['Arg2'] = {'TokenList': arg2_token_list}
             relation['Connective'] = {'TokenList': conn_token_list}
+
+            #print doc_id, len(all_relations[doc_id]), "fitness:", sets['fitness']
+            # print doc_id, len(all_relations[doc_id]), "arg1_set:", sets['Arg1'], arg1_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg1']) if i < doc_len ])
+            # print doc_id, len(all_relations[doc_id]), "arg2_set:", sets['Arg2'], arg2_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg2']) if i < doc_len ])
+            # print doc_id, len(all_relations[doc_id]), "conn_set:", sets['Connective'], conn_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Connective']) if i < doc_len ])
+            # print doc_id, len(all_relations[doc_id]), "rest_set:", len(sets['Rest'])
+            # print
+
             all_relations[doc_id].append(relation)
+            if len(all_relations[doc_id]) > max_relations:  # heuristic for invalid relations
+                break
     return all_relations
 
 
@@ -546,14 +555,14 @@ if __name__ == '__main__':
     epochs = 1000
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 3
+    embedding_dim = 20
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 1  #skipgram_window_size
     skipgram_offsets = conv_window_to_offsets(skipgram_window_size, skipgram_negative_samples, word_crop)
     pos2id_size = 20  #= None is computed
     pdtbpair2id_size = 16  #=16 is fixed
-    pdtbpair_window_size = 4  #20
+    pdtbpair_window_size = 20  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
     pdtbpair_filter_prefixes = ["Explicit:Expansion.Conjunction"]
@@ -581,7 +590,12 @@ if __name__ == '__main__':
     log.info("load dataset for training ({})".format(args.train_dir))
     train_doc_ids, train_words, train_relations = load_conll15st(args.train_dir)
     log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(train_doc_ids), sum([ len(s)  for s in train_words.itervalues() ]), sum([ len(s)  for s in train_relations.itervalues() ])))
-    train_relations_list = [ r  for doc_id in train_doc_ids for r in train_relations[doc_id] ]
+    import copy
+    train_relations_list = [ r  for doc_id in train_doc_ids for r in copy.deepcopy(train_relations)[doc_id] ]
+    for r in train_relations_list:
+        r['Arg1']['TokenList'] = [ [0, 0, i, 0, 0]  for i in r['Arg1']['TokenList'] ]
+        r['Arg2']['TokenList'] = [ [0, 0, i, 0, 0]  for i in r['Arg2']['TokenList'] ]
+        r['Connective']['TokenList'] = [ [0, 0, i, 0, 0]  for i in r['Connective']['TokenList'] ]
 
     #log.info("load dataset for validation ({})".format(args.valid_dir))
     #valid_doc_ids, valid_words, valid_relations = load_conll15st(args.valid_dir)
@@ -685,6 +699,43 @@ if __name__ == '__main__':
                 'y_pos': y_pos,
                 'y_pdtbpair': y_pdtbpair,
             })
+            #XXX
+            aa = {
+                'x_word_pad': x_word_pad,
+                'x_word_rand': x_word_rand,
+                'y_skipgram': y_skipgram,
+                'y_pos': y_pos,
+                'y_pdtbpair': y_pdtbpair,
+            }
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
+            loss = model.train_on_batch(aa)
             loss = float(loss)
 
             # compute stats
@@ -711,16 +762,18 @@ if __name__ == '__main__':
                 'x_word_pad': x_word_pad,
                 'x_word_rand': x_word_rand,
             })
-            relations_list.append(interpret_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, max_len, rtype, rsense))
+            all_relations = interpret_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, max_len, rtype, rsense)
+            relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
 
         # evaluate relations on training dataset
-        train_precision, train_recall, train_f1 = conll15st_scorer.scorer.evaluate_relation(train_relations_list, relations_list)
+        train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
         time_2 = time.time()
-        log.info("  train precision {:7.4f} recall {:7.4f}, f1 {:7.4f}, time: {:.1f}s".format(train_precision, train_recall, train_f1, time_2 - time_1))
+        log.info("  train precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(train_precision, train_recall, train_f1, time_2 - time_1))
 
-        valid_precision = valid_recall = valid_f1 = -1  #XXX
+        #XXX
+        valid_precision = valid_recall = valid_f1 = -1
         time_3 = time.time()
-        log.info("  valid precision {:7.4f} recall {:7.4f}, f1 {:7.4f}, time: {:.1f}s".format(train_precision, train_recall, train_f1, time_3 - time_2))
+        log.info("  valid precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(valid_precision, valid_recall, valid_f1, time_3 - time_2))
 
         # save stats
         stats.append({
