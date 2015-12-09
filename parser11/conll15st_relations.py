@@ -167,7 +167,7 @@ def add_relation_tags(all_words, all_relations):
         }
     """
 
-    linker_to_span = {"arg1": "Arg1", "arg2": "Arg2", "conn": "Connective"}
+    linker_to_span = {"arg1": 'Arg1', "arg2": 'Arg2', "conn": 'Connective'}
 
     # convert linker ids to relation tags on each word
     for doc_id in all_words:

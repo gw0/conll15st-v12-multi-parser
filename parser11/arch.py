@@ -41,27 +41,28 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     # layer 2: forward LSTM sequence (doc, time_pad, repr)
     model.add_node(LSTM(embedding_dim, return_sequences=True), name='layer_2', input='layer_1')
 
-    # POS model: POS tag dense neural network (doc, time_pad, pos2id_size)
+    # POS model: POS tag dense neural network (doc, time_pad, pos2id)
     model.add_node(TimeDistributedDense(pos2id_size), name='pos_dense', input='layer_2')
     model.add_node(Activation('softmax'), name='pos_softmax', input='pos_dense')
 
     # PDTB-style model: roll context to offsets (doc, time_pad, offset, repr)
     model.add_node(RollOffsets(pdtbpair_offsets, axis=1), name='pdtbpair_offsets', input='layer_2')
 
-    # PDTB-style model: dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id_size)
+    # PDTB-style model: dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id)
     model.add_node(RepeatVector2(len(pdtbpair_offsets), axis=2), name='pdtbpair_repeat', input='layer_2')
     model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
 
     # output: skip-gram labels (doc, time_pad, offset)
     model.add_output(name='y_skipgram', input='skipgram_mul')
 
-    # output: POS tags (doc, time_pad, pos2id_size)
+    # output: POS tags (doc, time_pad, pos2id)
     model.add_output(name='y_pos', input='pos_softmax')
 
-    # output: PDTB-style discourse relations (doc, time, offset, rpart_size)
+    # output: PDTB-style discourse relation pairwise occurrences (doc, time, offset, pdtbpair2id)
     model.add_output(name='y_pdtbpair', input='pdtbpair_dense')
 
     model.compile(optimizer='rmsprop', loss={'y_skipgram': 'mse', 'y_pos': 'binary_crossentropy', 'y_pdtbpair': 'mse'})
+    #model.compile(optimizer='rmsprop', loss={'y_pdtbpair': 'mse'})
     return model
 
 
