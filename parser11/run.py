@@ -107,13 +107,13 @@ class Stats(object):
 
 ### Load CoNLL15st dataset
 
-def load_conll15st(dataset_dir):
+def load_conll15st(dataset_dir, filter_prefixes=None):
     """Load CoNLL15st dataset in original form."""
 
     # load all relations by document id
     all_relations = conll15st_relations.load_relations(dataset_dir)
     all_relations = conll15st_relations.conv_span_tokenlist_format(all_relations)
-    all_relations = conll15st_relations.add_relation_sensenum(all_relations)
+    all_relations = conll15st_relations.add_relation_sensenum(all_relations, filter_prefixes=filter_prefixes)
 
     # load all words by document id
     all_words = conll15st_words.load_words(dataset_dir)
@@ -279,7 +279,7 @@ def build_y_pos(doc_ids, all_words, pos2id, word_crop, max_len):
     return y_pos
 
 
-def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, filter_prefixes):
+def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, filter_prefixes=None):
     """Prepare output: PDTB-style discourse relation pairwise occurrences (doc, time, offset, pdtbpair2id)."""
 
     y_pdtbpair = []
@@ -555,22 +555,22 @@ if __name__ == '__main__':
     epochs = 1000
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 20
+    embedding_dim = 100
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
-    skipgram_negative_samples = 1  #skipgram_window_size
+    skipgram_negative_samples = 0  #skipgram_window_size
     skipgram_offsets = conv_window_to_offsets(skipgram_window_size, skipgram_negative_samples, word_crop)
     pos2id_size = 20  #= None is computed
     pdtbpair2id_size = 16  #=16 is fixed
     pdtbpair_window_size = 20  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
-    pdtbpair_filter_prefixes = ["Explicit:Expansion.Conjunction"]
-    rtype, rsense = pdtbpair_filter_prefixes[0].split(":")
+    filter_prefixes = ["Explicit:Expansion.Conjunction"]
+    rtype, rsense = filter_prefixes[0].split(":")
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
 
     log.info("configuration ({})".format(args.experiment_dir))
-    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'pdtbpair_filter_prefixes', 'max_len']:
+    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'filter_prefixes', 'max_len']:
         log.info("  {}: {}".format(var, eval(var)))
 
     # experiment files
@@ -588,7 +588,7 @@ if __name__ == '__main__':
 
     # load datasets
     log.info("load dataset for training ({})".format(args.train_dir))
-    train_doc_ids, train_words, train_relations = load_conll15st(args.train_dir)
+    train_doc_ids, train_words, train_relations = load_conll15st(args.train_dir, filter_prefixes=filter_prefixes)
     log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(train_doc_ids), sum([ len(s)  for s in train_words.itervalues() ]), sum([ len(s)  for s in train_relations.itervalues() ])))
     import copy
     train_relations_list = [ r  for doc_id in train_doc_ids for r in copy.deepcopy(train_relations)[doc_id] ]
@@ -598,11 +598,11 @@ if __name__ == '__main__':
         r['Connective']['TokenList'] = [ [0, 0, i, 0, 0]  for i in r['Connective']['TokenList'] ]
 
     #log.info("load dataset for validation ({})".format(args.valid_dir))
-    #valid_doc_ids, valid_words, valid_relations = load_conll15st(args.valid_dir)
+    #valid_doc_ids, valid_words, valid_relations = load_conll15st(args.valid_dir, filter_prefixes=filter_prefixes)
     #log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(valid_doc_ids), sum([ len(s)  for s in valid_words.itervalues() ]), sum([ len(s)  for s in valid_relations.itervalues() ])))
 
     #log.info("load dataset for testing ({})".format(args.test_dir))
-    #test_doc_ids, test_words, test_relations = load_conll15st(args.test_dir)
+    #test_doc_ids, test_words, test_relations = load_conll15st(args.test_dir, filter_prefixes=filter_prefixes)
     #log.info("  doc_ids: {}, all_words: {}, all_relations: {}".format(len(test_doc_ids), sum([ len(s)  for s in test_words.itervalues() ]), sum([ len(s)  for s in test_relations.itervalues() ])))
 
     # build indexes
@@ -688,7 +688,7 @@ if __name__ == '__main__':
             y_pos = build_y_pos(doc_ids, train_words, pos2id, word_crop, max_len)
             #print("y_pos:"); pprint(y_pos)
 
-            y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, pdtbpair_filter_prefixes)
+            y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len)
             #print("y_pdtbpair:"); pprint(y_pdtbpair)
 
             # train on batch
@@ -773,7 +773,7 @@ if __name__ == '__main__':
         #XXX
         valid_precision = valid_recall = valid_f1 = -1
         time_3 = time.time()
-        log.info("  valid precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(valid_precision, valid_recall, valid_f1, time_3 - time_2))
+        #log.info("  valid precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(valid_precision, valid_recall, valid_f1, time_3 - time_2))
 
         # save stats
         stats.append({

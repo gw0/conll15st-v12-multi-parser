@@ -150,7 +150,7 @@ def add_relation_sensenum(all_relations, filter_prefixes=None):
             relation['SenseNum'] = [str(rnums[rnum_key])]
 
             tags = [ rtsns_to_tag(relation, span)  for span in ['Arg1', 'Arg2', 'Connective'] ]
-            if filter_tags(tags, filter_prefixes):  # relation found
+            if filter_tags(tags, filter_prefixes):  # relation matches
                 relations_ord[doc_id].append(relation)
     return relations_ord
 
