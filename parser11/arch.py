@@ -27,7 +27,8 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     #model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # layer 1: word embedding lookup table (doc, time_pad, emb)
-    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, mask_zero=True), name='layer_1', input='x_word_pad')
+    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='layer_1', input='x_word_pad')
+    #XXX: mask_zero=True
 
     # skip-gram model: context embedding lookup table (doc, time_pad, emb)
     #model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='skipgram_emb', input='x_word_rand')
@@ -51,14 +52,18 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
 
     # PDTB-style model: dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id)
     model.add_node(RepeatVector2(len(pdtbpair_offsets), axis=2), name='pdtbpair_repeat', input='layer_2')
+
+    #1
     #model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
     #model.add_node(Activation('tanh'), name='pdtbpair_tanh', input='pdtbpair_dense')
 
+    #2
     model.add_node(TimeDistributedDense2(2 * embedding_dim), name='pdtbpair_dense2', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
     model.add_node(PReLU(), name='pdtbpair_tanh2', input='pdtbpair_dense2')
     model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair_tanh2')
     model.add_node(PReLU(), name='pdtbpair_tanh', input='pdtbpair_dense')
 
+    #3
     # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_permute', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
     # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets)), name='pdtbpair2_dense', input='pdtbpair2_permute')
     # model.add_node(Activation('tanh'), name='pdtbpair2_tanh', input='pdtbpair2_dense')

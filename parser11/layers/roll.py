@@ -1,9 +1,9 @@
 # https://github.com/fchollet/keras/pull/607/files
 
-import theano.tensor as T
+from keras import backend as K
+import theano.tensor as T  #XXX
 from keras.layers.core import Layer, MaskedLayer
 from keras import activations, initializations, regularizers, constraints
-from keras.utils.theano_utils import shared_zeros
 
 
 class Roll(Layer):
@@ -92,6 +92,8 @@ class RollOffsets(MaskedLayer):
 
     def get_output_mask(self, train=False):
         X = self.get_input_mask(train)
+        if X is None:
+            return None
         tensors = [ T.roll(X, off, axis=self.axis)  for off in self.offsets ]
         return T.stack(tensors, axis=self.offset_axis)
 
@@ -163,13 +165,13 @@ class TimeDistributedMerge2(Layer):
     def get_output(self, train=False):
         X = self.get_input(train)
         if self.mode == 'ave':
-            s = T.mean(X, axis=self.axis)
+            s = K.mean(X, axis=self.axis)
             return s
         if self.mode == 'sum':
-            s = T.sum(X, axis=self.axis)
+            s = K.sum(X, axis=self.axis)
             return s
         elif self.mode == 'mul':
-            s = T.mul(X, axis=self.axis)
+            s = K.mul(X, axis=self.axis)
             return s
         else:
             raise Exception('Unknown merge mode')
@@ -216,9 +218,8 @@ class TimeDistributedDense2(MaskedLayer):
     def build(self):
         input_dim = self.input_shape[-1]
 
-        self.input = T.tensor3()
         self.W = self.init((input_dim, self.output_dim))
-        self.b = shared_zeros((self.output_dim))
+        self.b = K.zeros((self.output_dim,))
 
         self.params = [self.W, self.b]
         self.regularizers = []
@@ -248,7 +249,7 @@ class TimeDistributedDense2(MaskedLayer):
         X = self.get_input(train)
         axis = len(self.input_shape) - 1
         permutation = range(axis - 1, -1, -1) + [axis]
-        output = self.activation(T.dot(X.dimshuffle(permutation), self.W) + self.b)
+        output = self.activation(K.dot(X.dimshuffle(permutation), self.W) + self.b)
         return output.dimshuffle(permutation)
 
     def get_config(self):

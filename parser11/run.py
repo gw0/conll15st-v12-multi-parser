@@ -15,8 +15,7 @@ import resource
 import time
 import cPickle as pickle
 import numpy as np
-import theano
-import theano.tensor as T
+from keras import backend as K
 from keras.utils.visualize_util import plot
 
 import arch
@@ -51,7 +50,7 @@ class Profiler(object):
         self.print_usage()
 
     def print_usage(self):
-        self.log.error("(time {:.3f}s, memory {:+.1f}MB, total {:.3f}GB)".format(self.time_1 - self.time_0, (self.mem_1 - self.mem_0) / 1024.0, self.mem_1 / 1024.0 / 1024.0))
+        self.log.error("(time {:.2f}s, memory {:+.1f}MB, total {:.3f}GB)".format(self.time_1 - self.time_0, (self.mem_1 - self.mem_0) / 1024.0, self.mem_1 / 1024.0 / 1024.0))
 
 def profile(func, log=None):
     """Decorator for monitoring time and memory usage."""
@@ -590,7 +589,7 @@ if __name__ == '__main__':
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
 
     log.info("configuration ({})".format(args.experiment_dir))
-    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'filter_prefixes', 'max_len']:
+    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'K._config', 'os.getenv("THEANO_FLAGS")', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'filter_prefixes', 'max_len']:
         log.info("  {}: {}".format(var, eval(var)))
 
     # experiment files
@@ -722,7 +721,7 @@ if __name__ == '__main__':
                 'y_pos': y_pos,
                 'y_pdtbpair': y_pdtbpair,
             })
-            loss = float(loss)
+            loss = float(loss[0])
 
             #XXX
             #aa = {
@@ -763,7 +762,7 @@ if __name__ == '__main__':
 
         loss_avg /= len(train_doc_ids)
         time_1 = time.time()
-        log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.1f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
+        log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.2f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
 
         # validate model on training dataset
         relations_list = []
@@ -784,8 +783,8 @@ if __name__ == '__main__':
         # evaluate relations on training dataset
         train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
         time_2 = time.time()
-        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.1f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
-        if train_precision != 0. or train_recall != 0. or train_f1 != 0.:
+        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.2f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
+        if len(relations_list) > 0 and (train_precision > 0. or train_recall > 0. or train_f1 > 0.):
             print "  WOOHOOO!!!"
 
         #XXX
