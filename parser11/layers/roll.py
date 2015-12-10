@@ -242,7 +242,7 @@ class TimeDistributedDense2(MaskedLayer):
     @property
     def output_shape(self):
         input_shape = self.input_shape
-        return (input_shape[:-1], self.output_dim)
+        return input_shape[:-1] + (self.output_dim,)
 
     def get_output(self, train=False):
         X = self.get_input(train)

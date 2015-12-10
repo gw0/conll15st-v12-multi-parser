@@ -453,9 +453,9 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
     """Interpret pairwise occurrences as PDTB-style discourse relations."""
 
     sets_max_len = {  #XXX
-        'Arg1': 30,
-        'Arg2': 30,
-        'Connective': 5,
+        'Arg1': 50,
+        'Arg2': 50,
+        'Connective': 10,
         'Rest': 100,
     }
     max_relations = 10  #XXX
@@ -527,14 +527,15 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
             relation['Arg2'] = {'TokenList': arg2_token_list}
             relation['Connective'] = {'TokenList': conn_token_list}
 
-            print
-            print doc_id, len(all_relations[doc_id]), "fitness: {:.4f}".format(sets['fitness']), "sizes:", len(sets['Arg1']), len(sets['Arg2']), len(sets['Connective']), len(sets['Rest'])
-            print "arg1_set:", len(arg1_token_list), list_compaction(arg1_token_list)
-            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg1']) if i < doc_len ])
-            print "arg2_set:", len(arg2_token_list), list_compaction(arg2_token_list)
-            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg2']) if i < doc_len ])
-            print "conn_set:", len(conn_token_list), list_compaction(conn_token_list)
-            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Connective']) if i < doc_len ])
+            if doc_id in ["wsj_1000", "wsj_2214"]:  #XXX
+                print
+                print doc_id, len(all_relations[doc_id]), "fitness: {:.4f}".format(sets['fitness']), "sizes:", len(sets['Arg1']), len(sets['Arg2']), len(sets['Connective']), len(sets['Rest'])
+                print "arg1_set:", len(arg1_token_list), list_compaction(arg1_token_list)
+                print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg1']) if i < doc_len ])
+                print "arg2_set:", len(arg2_token_list), list_compaction(arg2_token_list)
+                print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg2']) if i < doc_len ])
+                print "conn_set:", len(conn_token_list), list_compaction(conn_token_list)
+                print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Connective']) if i < doc_len ])
 
             all_relations[doc_id].append(relation)
             if len(all_relations[doc_id]) >= max_relations or any([ len(sets[k]) >= sets_max_len[k]  for k in sets_max_len.keys() ]):  # heuristic for invalid relations
@@ -573,7 +574,7 @@ if __name__ == '__main__':
     epochs = 1000
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 40
+    embedding_dim = 40  #40
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 0  #skipgram_window_size
@@ -583,7 +584,7 @@ if __name__ == '__main__':
     pdtbpair_window_size = 20  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
-    filter_prefixes = ["Explicit:Expansion.Conjunction:1"]
+    filter_prefixes = ["Explicit:Expansion.Conjunction"]
     rtype = filter_prefixes[0].split(":")[0]
     rsense = filter_prefixes[0].split(":")[1]
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
@@ -721,15 +722,16 @@ if __name__ == '__main__':
                 'y_pos': y_pos,
                 'y_pdtbpair': y_pdtbpair,
             })
+            loss = float(loss)
 
             #XXX
-            aa = {
-                'x_word_pad': x_word_pad,
-                'x_word_rand': x_word_rand,
-                'y_skipgram': y_skipgram,
-                'y_pos': y_pos,
-                'y_pdtbpair': y_pdtbpair,
-            }
+            #aa = {
+            #    'x_word_pad': x_word_pad,
+            #    'x_word_rand': x_word_rand,
+            #    'y_skipgram': y_skipgram,
+            #    'y_pos': y_pos,
+            #    'y_pdtbpair': y_pdtbpair,
+            #}
             # print "layer_1"
             # layer_1 = arch.get_activations(model, 'layer_1', aa)
             # pprint(layer_1[0].shape)
@@ -751,36 +753,6 @@ if __name__ == '__main__':
             # pprint(pdtbpair_dense[0].shape)
             # pprint(pdtbpair_dense[0])
             # raise Exception()
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = model.train_on_batch(aa)
-            loss = float(loss)
 
             # compute stats
             loss_avg += loss
@@ -791,7 +763,7 @@ if __name__ == '__main__':
 
         loss_avg /= len(train_doc_ids)
         time_1 = time.time()
-        log.info("  loss avg: {:.8f}, min: {:.8f}, max: {:.8f}, time: {:.1f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
+        log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.1f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
 
         # validate model on training dataset
         relations_list = []
@@ -812,7 +784,9 @@ if __name__ == '__main__':
         # evaluate relations on training dataset
         train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
         time_2 = time.time()
-        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}, time: {:.1f}s".format(train_precision, train_recall, train_f1, len(relations_list), time_2 - time_1))
+        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.1f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
+        if train_precision != 0. or train_recall != 0. or train_f1 != 0.:
+            print "  WOOHOOO!!!"
 
         #XXX
         valid_precision = valid_recall = valid_f1 = -1
