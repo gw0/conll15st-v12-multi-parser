@@ -182,27 +182,45 @@ def build_pos2id(all_words, max_size=None, min_count=0, pos2id=None):
 
 
 def build_pdtbpair2id():
-    """Build PDTB-style discourse parsing span pairs index."""
+    """Build PDTB-style discourse parsing span pairs index and weights."""
 
     pdtbpair2id = {
-        "Rest-Rest": 0,
-        "Arg1-Arg1": 1,
-        "Arg1-Arg2": 2,
-        "Arg1-Connective": 3,
-        "Arg1-Rest": 4,
-        "Arg2-Arg1": 5,
-        "Arg2-Arg2": 6,
-        "Arg2-Connective": 7,
-        "Arg2-Rest": 8,
-        "Connective-Arg1": 9,
-        "Connective-Arg2": 10,
-        "Connective-Connective": 11,
-        "Connective-Rest": 12,
-        "Rest-Arg1": 13,
-        "Rest-Arg2": 14,
-        "Rest-Connective": 15,
+        "Arg1-Arg1": 0,
+        "Arg1-Arg2": 1,
+        "Arg1-Connective": 2,
+        "Arg1-Rest": 3,
+        "Arg2-Arg1": 4,
+        "Arg2-Arg2": 5,
+        "Arg2-Connective": 6,
+        "Arg2-Rest": 7,
+        "Connective-Arg1": 8,
+        "Connective-Arg2": 9,
+        "Connective-Connective": 10,
+        "Connective-Rest": 11,
+        "Rest-Arg1": 12,
+        "Rest-Arg2": 13,
+        "Rest-Connective": 14,
+        "Rest-Rest": 15,
     }
-    return pdtbpair2id
+    pdtbpair2id_weights = {
+        "Arg1-Arg1": 1.,
+        "Arg1-Arg2": 1.,
+        "Arg1-Connective": 1.,
+        "Arg1-Rest": 0.05,
+        "Arg2-Arg1": 1.,
+        "Arg2-Arg2": 1.,
+        "Arg2-Connective": 1.,
+        "Arg2-Rest": 0.05,
+        "Connective-Arg1": 1.,
+        "Connective-Arg2": 1.,
+        "Connective-Connective": 1.,
+        "Connective-Rest": 0.05,
+        "Rest-Arg1": 0.05,
+        "Rest-Arg2": 0.05,
+        "Rest-Connective": 0.05,
+        "Rest-Rest": 0.,
+    }
+    return pdtbpair2id, pdtbpair2id_weights
 
 
 ### Build numpy arrays
@@ -279,7 +297,7 @@ def build_y_pos(doc_ids, all_words, pos2id, word_crop, max_len):
     return y_pos
 
 
-def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len, filter_prefixes=None):
+def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, word_crop, max_len, filter_prefixes=None):
     """Prepare output: PDTB-style discourse relation pairwise occurrences (doc, time, offset, pdtbpair2id)."""
 
     y_pdtbpair = []
@@ -287,7 +305,7 @@ def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_cro
         doc_len = len(all_words[doc_id])
 
         # map word pairs with PDTB-style tags to pairwise occurrences
-        pairs = np.zeros((max_len, len(pdtbpair_offsets), pdtbpair2id_size), dtype=np.int)
+        pairs = np.zeros((max_len, len(pdtbpair_offsets), pdtbpair2id_size))
         for w1_i in range(max_len):  # iterate word 1
 
             # filtered word 1 tags by specified relation tags
@@ -320,7 +338,7 @@ def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_cro
                             break
 
                     # update pair
-                    pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+                    pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += pdtbpair2id_weights[pdtbpair2id_key]
 
                 # else mark occurrences with only word 2
                 if not w1_tags:
@@ -331,14 +349,14 @@ def build_y_pdtbpair(doc_ids, all_words, pdtbpair_offsets, pdtbpair2id, word_cro
                         pdtbpair2id_key = "Rest-{}".format(w2_rspan)
 
                         # update pair
-                        pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+                        pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += pdtbpair2id_weights[pdtbpair2id_key]
 
                 # else mark no occurrences between word 1 and word 2
                 if pdtbpair2id_key is None:
                     pdtbpair2id_key = "Rest-Rest"
 
                     # update pair
-                    pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += 1
+                    pairs[w1_i, off_i, pdtbpair2id[pdtbpair2id_key]] += pdtbpair2id_weights[pdtbpair2id_key]
         y_pdtbpair.append(pairs)
 
     # return as numpy array
@@ -360,7 +378,7 @@ def fitness_partial(pairs, offsets, pair2id, pair2id_weights, sets, update_sets)
                     if w2_i in w2_set:
                         # evaluate w1-w2 pair occurrence
                         pair2id_key = "{}-{}".format(w1_rspan, w2_rspan)
-                        fitness += pairs[w1_i, off_i, pair2id[pair2id_key]] * pair2id_weights[pair2id_key]
+                        fitness += pairs[w1_i, off_i, pair2id[pair2id_key]]
 
                         # evaluate opposite w2-w1 pair occurrence
                         try:
@@ -369,7 +387,7 @@ def fitness_partial(pairs, offsets, pair2id, pair2id_weights, sets, update_sets)
                             pass
                         else:
                             pair2id_key = "{}-{}".format(w2_rspan, w1_rspan)
-                            fitness += pairs[w2_i, off_j, pair2id[pair2id_key]] * pair2id_weights[pair2id_key]
+                            fitness += pairs[w2_i, off_j, pair2id[pair2id_key]]
     return fitness
 
 
@@ -408,7 +426,7 @@ def extract_max_spans(pairs, offsets, pair2id, pair2id_weights, sets, sets_max_l
         # add best word into best set
         for k, s in best_update_sets.items():
             sets[k].update(s)
-            if len(sets[k]) > sets_max_len[k]:  # heuristic for invalid sets
+            if len(sets[k]) >= sets_max_len[k]:  # heuristic for invalid sets
                 todo_set = set([])
                 break
             todo_set.update(explode_set(s, offsets, max_len))
@@ -426,39 +444,35 @@ def extract_max_spans(pairs, offsets, pair2id, pair2id_weights, sets, sets_max_l
                         # subtract w1-w2 pair occurrence
                         pair2id_key = "{}-{}".format(w1_rspan, w2_rspan)
                         fitness += pairs[w1_i, off_i, pair2id[pair2id_key]]
-                        pairs[w1_i, off_i, pair2id[pair2id_key]] -= 1.
+                        pairs[w1_i, off_i, pair2id[pair2id_key]] -= pair2id_weights[pair2id_key]
     sets['fitness'] = fitness  #XXX
     return sets
 
 
-def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbpair2id, max_len, rtype, rsense):
+def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense):
     """Interpret pairwise occurrences as PDTB-style discourse relations."""
 
-    pdtbpair2id_weights = {
-        "Rest-Rest": 0.,
-        "Arg1-Arg1": 1.,
-        "Arg1-Arg2": 1.,
-        "Arg1-Connective": 1.,
-        "Arg1-Rest": 0.05,
-        "Arg2-Arg1": 1.,
-        "Arg2-Arg2": 1.,
-        "Arg2-Connective": 1.,
-        "Arg2-Rest": 0.05,
-        "Connective-Arg1": 1.,
-        "Connective-Arg2": 1.,
-        "Connective-Connective": 1.,
-        "Connective-Rest": 0.05,
-        "Rest-Arg1": 0.05,
-        "Rest-Arg2": 0.05,
-        "Rest-Connective": 0.05,
-    }
     sets_max_len = {  #XXX
-        'Arg1': 100,
-        'Arg2': 100,
-        'Connective': 10,
+        'Arg1': 30,
+        'Arg2': 30,
+        'Connective': 5,
         'Rest': 100,
     }
     max_relations = 10  #XXX
+    def list_compaction(input):  #XXX
+        output = []
+        first = last = None # first and last number of current consecutive range
+        for item in sorted(input):
+            if first is None:
+                first = last = item # bootstrap
+            elif item == last + 1: # consecutive
+                last = item # extend the range
+            else: # not consecutive
+                output.append((first, last)) # pack up the range
+                first = last = item
+        # the last range ended by iteration end
+        output.append((first, last))
+        return output
 
     all_relations = {}
     for d, doc_id in enumerate(doc_ids):
@@ -513,15 +527,17 @@ def interpret_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbp
             relation['Arg2'] = {'TokenList': arg2_token_list}
             relation['Connective'] = {'TokenList': conn_token_list}
 
-            #print doc_id, len(all_relations[doc_id]), "fitness:", sets['fitness']
-            # print doc_id, len(all_relations[doc_id]), "arg1_set:", sets['Arg1'], arg1_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg1']) if i < doc_len ])
-            # print doc_id, len(all_relations[doc_id]), "arg2_set:", sets['Arg2'], arg2_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg2']) if i < doc_len ])
-            # print doc_id, len(all_relations[doc_id]), "conn_set:", sets['Connective'], conn_token_list, "\n>", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Connective']) if i < doc_len ])
-            # print doc_id, len(all_relations[doc_id]), "rest_set:", len(sets['Rest'])
-            # print
+            print
+            print doc_id, len(all_relations[doc_id]), "fitness: {:.4f}".format(sets['fitness']), "sizes:", len(sets['Arg1']), len(sets['Arg2']), len(sets['Connective']), len(sets['Rest'])
+            print "arg1_set:", len(arg1_token_list), list_compaction(arg1_token_list)
+            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg1']) if i < doc_len ])
+            print "arg2_set:", len(arg2_token_list), list_compaction(arg2_token_list)
+            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Arg2']) if i < doc_len ])
+            print "conn_set:", len(conn_token_list), list_compaction(conn_token_list)
+            print ">", " ".join([ all_words[doc_id][i]['Text']  for i in sorted(sets['Connective']) if i < doc_len ])
 
             all_relations[doc_id].append(relation)
-            if len(all_relations[doc_id]) > max_relations:  # heuristic for invalid relations
+            if len(all_relations[doc_id]) >= max_relations or any([ len(sets[k]) >= sets_max_len[k]  for k in sets_max_len.keys() ]):  # heuristic for invalid relations
                 break
     return all_relations
 
@@ -549,13 +565,15 @@ if __name__ == '__main__':
         help="CoNLL15st dataset directory for testing (only 'pdtb-parses.json')")
     argp.add_argument('output_dir',
         help="output directory for system predictions (in 'output.json')")
+    argp.add_argument('--clean', action='store_true',
+        help="clean previous experiment")
     args = argp.parse_args()
 
     # defaults
     epochs = 1000
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 100
+    embedding_dim = 40
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 0  #skipgram_window_size
@@ -565,8 +583,9 @@ if __name__ == '__main__':
     pdtbpair_window_size = 20  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
-    filter_prefixes = ["Explicit:Expansion.Conjunction"]
-    rtype, rsense = filter_prefixes[0].split(":")
+    filter_prefixes = ["Explicit:Expansion.Conjunction:1"]
+    rtype = filter_prefixes[0].split(":")[0]
+    rsense = filter_prefixes[0].split(":")[1]
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
 
     log.info("configuration ({})".format(args.experiment_dir))
@@ -574,6 +593,9 @@ if __name__ == '__main__':
         log.info("  {}: {}".format(var, eval(var)))
 
     # experiment files
+    if args.clean and os.path.isdir(args.experiment_dir):
+        import shutil
+        shutil.rmtree(args.experiment_dir)
     if not os.path.isdir(args.experiment_dir):
         os.makedirs(args.experiment_dir)
     word2id_pkl = "{}/word2id.pkl".format(args.experiment_dir)
@@ -610,13 +632,13 @@ if __name__ == '__main__':
         log.info("build indexes")
         word2id = build_word2id(train_words, max_size=word2id_size)
         pos2id = build_pos2id(train_words, max_size=pos2id_size)
-        pdtbpair2id = build_pdtbpair2id()
+        pdtbpair2id, pdtbpair2id_weights = build_pdtbpair2id()
         with open(word2id_pkl, 'wb') as f:
             pickle.dump(word2id, f)
         with open(pos2id_pkl, 'wb') as f:
             pickle.dump(pos2id, f)
         with open(pdtbpair2id_pkl, 'wb') as f:
-            pickle.dump(pdtbpair2id, f)
+            pickle.dump((pdtbpair2id, pdtbpair2id_weights), f)
     else:
         log.info("load previous indexes ({})".format(args.experiment_dir))
         with open(word2id_pkl, 'rb') as f:
@@ -624,7 +646,7 @@ if __name__ == '__main__':
         with open(pos2id_pkl, 'rb') as f:
             pos2id = pickle.load(f)
         with open(pdtbpair2id_pkl, 'rb') as f:
-            pdtbpair2id = pickle.load(f)
+            pdtbpair2id, pdtbpair2id_weights = pickle.load(f)
     log.info("  word2id: {}, pos2id: {}, pdtbpair2id: {}".format(len(word2id), len(pos2id), len(pdtbpair2id)))
 
     # build model
@@ -688,7 +710,7 @@ if __name__ == '__main__':
             y_pos = build_y_pos(doc_ids, train_words, pos2id, word_crop, max_len)
             #print("y_pos:"); pprint(y_pos)
 
-            y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, word_crop, max_len)
+            y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, word_crop, max_len)
             #print("y_pdtbpair:"); pprint(y_pdtbpair)
 
             # train on batch
@@ -699,6 +721,7 @@ if __name__ == '__main__':
                 'y_pos': y_pos,
                 'y_pdtbpair': y_pdtbpair,
             })
+
             #XXX
             aa = {
                 'x_word_pad': x_word_pad,
@@ -707,6 +730,27 @@ if __name__ == '__main__':
                 'y_pos': y_pos,
                 'y_pdtbpair': y_pdtbpair,
             }
+            # print "layer_1"
+            # layer_1 = arch.get_activations(model, 'layer_1', aa)
+            # pprint(layer_1[0].shape)
+            # pprint(layer_1[0])
+            # print "layer_2"
+            # layer_2 = arch.get_activations(model, 'layer_2', aa)
+            # pprint(layer_2[0].shape)
+            # pprint(layer_2[0])
+            # print "pdtbpair_offsets"
+            # pdtbpair_offsets = arch.get_activations(model, 'pdtbpair_offsets', aa)
+            # pprint(pdtbpair_offsets[0].shape)
+            # pprint(pdtbpair_offsets[0])
+            # print "pdtbpair_repeat"
+            # pdtbpair_repeat = arch.get_activations(model, 'pdtbpair_repeat', aa)
+            # pprint(pdtbpair_repeat[0].shape)
+            # pprint(pdtbpair_repeat[0])
+            # print "pdtbpair_dense"
+            # pdtbpair_dense = arch.get_activations(model, 'pdtbpair_dense', aa)
+            # pprint(pdtbpair_dense[0].shape)
+            # pprint(pdtbpair_dense[0])
+            # raise Exception()
             loss = model.train_on_batch(aa)
             loss = model.train_on_batch(aa)
             loss = model.train_on_batch(aa)
@@ -747,7 +791,7 @@ if __name__ == '__main__':
 
         loss_avg /= len(train_doc_ids)
         time_1 = time.time()
-        log.info("  loss avg: {:.4f}, min: {:.4f}, max: {:.4f}, time: {:.1f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
+        log.info("  loss avg: {:.8f}, min: {:.8f}, max: {:.8f}, time: {:.1f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
 
         # validate model on training dataset
         relations_list = []
@@ -762,18 +806,17 @@ if __name__ == '__main__':
                 'x_word_pad': x_word_pad,
                 'x_word_rand': x_word_rand,
             })
-            all_relations = interpret_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, max_len, rtype, rsense)
+            all_relations = interpret_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
             relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
 
         # evaluate relations on training dataset
         train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
         time_2 = time.time()
-        log.info("  train precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(train_precision, train_recall, train_f1, time_2 - time_1))
+        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}, time: {:.1f}s".format(train_precision, train_recall, train_f1, len(relations_list), time_2 - time_1))
 
         #XXX
         valid_precision = valid_recall = valid_f1 = -1
         time_3 = time.time()
-        #log.info("  valid precision: {:6.4f}, recall: {:6.4f}, f1: {:6.4f}, time: {:.1f}s".format(valid_precision, valid_recall, valid_f1, time_3 - time_2))
 
         # save stats
         stats.append({

@@ -8,7 +8,8 @@ __author__ = "GW [http://gw.tnode.com/] <gw.2015@tnode.com>"
 __license__ = "GPLv3+"
 
 from keras.models import Graph
-from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense
+from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute
+from keras.layers.advanced_activations import PReLU
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
 
@@ -23,47 +24,67 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     model.add_input(name='x_word_pad', input_shape=(None,), dtype='int')
 
     # input: word ids with random post-padding (doc, time_pad)
-    model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
+    #model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # layer 1: word embedding lookup table (doc, time_pad, emb)
     model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, mask_zero=True), name='layer_1', input='x_word_pad')
 
     # skip-gram model: context embedding lookup table (doc, time_pad, emb)
-    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='skipgram_emb', input='x_word_rand')
+    #model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='skipgram_emb', input='x_word_rand')
 
     # skip-gram model: roll context to offsets (doc, time_pad, offset, emb)
-    model.add_node(RollOffsets(skipgram_offsets, axis=1), name='skipgram_offsets', input='skipgram_emb')
+    #model.add_node(RollOffsets(skipgram_offsets, axis=1), name='skipgram_offsets', input='skipgram_emb')
 
     # skip-gram model: dot product on word-context pairs (doc, time_pad, offset)
-    model.add_node(RepeatVector2(len(skipgram_offsets), axis=2), name='skipgram_repeat', input='layer_1')
-    model.add_node(TimeDistributedMerge2(mode='sum', axis=3), name='skipgram_mul', inputs=['skipgram_repeat', 'skipgram_offsets'], merge_mode='mul')
+    #model.add_node(RepeatVector2(len(skipgram_offsets), axis=2), name='skipgram_repeat', input='layer_1')
+    #model.add_node(TimeDistributedMerge2(mode='sum', axis=3), name='skipgram_mul', inputs=['skipgram_repeat', 'skipgram_offsets'], merge_mode='mul')
 
     # layer 2: forward LSTM sequence (doc, time_pad, repr)
     model.add_node(LSTM(embedding_dim, return_sequences=True), name='layer_2', input='layer_1')
 
     # POS model: POS tag dense neural network (doc, time_pad, pos2id)
-    model.add_node(TimeDistributedDense(pos2id_size), name='pos_dense', input='layer_2')
-    model.add_node(Activation('softmax'), name='pos_softmax', input='pos_dense')
+    #model.add_node(TimeDistributedDense(pos2id_size), name='pos_dense', input='layer_2')
+    #model.add_node(Activation('softmax'), name='pos_softmax', input='pos_dense')
 
     # PDTB-style model: roll context to offsets (doc, time_pad, offset, repr)
     model.add_node(RollOffsets(pdtbpair_offsets, axis=1), name='pdtbpair_offsets', input='layer_2')
 
     # PDTB-style model: dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id)
     model.add_node(RepeatVector2(len(pdtbpair_offsets), axis=2), name='pdtbpair_repeat', input='layer_2')
-    model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    #model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    #model.add_node(Activation('tanh'), name='pdtbpair_tanh', input='pdtbpair_dense')
+
+    model.add_node(TimeDistributedDense2(2 * embedding_dim), name='pdtbpair_dense2', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    model.add_node(PReLU(), name='pdtbpair_tanh2', input='pdtbpair_dense2')
+    model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair_tanh2')
+    model.add_node(PReLU(), name='pdtbpair_tanh', input='pdtbpair_dense')
+
+    # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_permute', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets)), name='pdtbpair2_dense', input='pdtbpair2_permute')
+    # model.add_node(Activation('tanh'), name='pdtbpair2_tanh', input='pdtbpair2_dense')
+    # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_unpermute', input='pdtbpair2_tanh')
+    # model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair2_unpermute')
+    # model.add_node(Activation('tanh'), name='pdtbpair_tanh', input='pdtbpair_dense')
 
     # output: skip-gram labels (doc, time_pad, offset)
-    model.add_output(name='y_skipgram', input='skipgram_mul')
+    #model.add_output(name='y_skipgram', input='skipgram_mul')
 
     # output: POS tags (doc, time_pad, pos2id)
-    model.add_output(name='y_pos', input='pos_softmax')
+    #model.add_output(name='y_pos', input='pos_softmax')
 
     # output: PDTB-style discourse relation pairwise occurrences (doc, time, offset, pdtbpair2id)
-    model.add_output(name='y_pdtbpair', input='pdtbpair_dense')
+    model.add_output(name='y_pdtbpair', input='pdtbpair_tanh')
 
-    model.compile(optimizer='rmsprop', loss={'y_skipgram': 'mse', 'y_pos': 'binary_crossentropy', 'y_pdtbpair': 'mse'})
-    #model.compile(optimizer='rmsprop', loss={'y_pdtbpair': 'mse'})
+    #model.compile(optimizer='rmsprop', loss={'y_skipgram': 'mse', 'y_pos': 'binary_crossentropy', 'y_pdtbpair': 'mse'})
+    model.compile(optimizer='adam', loss={'y_pdtbpair': 'mse'})
     return model
+
+
+def get_activations(model, layer, X_batch):
+    import theano
+    get_activations = theano.function(inputs=[ model.inputs[i].input  for i in model.input_order ], outputs=[ model.nodes[layer].get_output(train=False) ], allow_input_downcast=True)
+    activations = get_activations(*[ X_batch[i]  for i in model.input_order ])
+    return activations
 
 
 def test_arch():
