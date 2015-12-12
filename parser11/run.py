@@ -17,6 +17,7 @@ import cPickle as pickle
 import numpy as np
 from keras import backend as K
 from keras.utils.visualize_util import plot
+from keras.models import make_batches
 
 import arch
 import conll15st_relations
@@ -124,7 +125,7 @@ def load_conll15st(dataset_dir, filter_prefixes=None):
     return doc_ids, all_words, all_relations
 
 
-def build_word2id(all_words, max_size=None, min_count=2, word2id=None):
+def build_word2id(all_words, max_size=None, min_count=1, word2id=None):
     """Build vocabulary index for all words (id 0 reserved for masking, id 1 for unknown words)."""
     if word2id is None:
         word2id = {}
@@ -571,6 +572,7 @@ if __name__ == '__main__':
 
     # defaults
     epochs = 1000
+    batch_size = 10
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
     embedding_dim = 40  #40
@@ -589,7 +591,7 @@ if __name__ == '__main__':
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
 
     log.info("configuration ({})".format(args.experiment_dir))
-    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'K._config', 'os.getenv("THEANO_FLAGS")', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'filter_prefixes', 'max_len']:
+    for var in ['args.experiment_dir', 'args.train_dir', 'args.valid_dir', 'args.test_dir', 'args.output_dir', 'K._config', 'os.getenv("THEANO_FLAGS")', 'epochs', 'batch_size', 'word_crop', 'embedding_dim', 'word2id_size', 'skipgram_window_size', 'skipgram_negative_samples', 'skipgram_offsets', 'pos2id_size', 'pdtbpair2id_size', 'pdtbpair_window_size', 'pdtbpair_negative_samples', 'pdtbpair_offsets', 'filter_prefixes', 'max_len']:
         log.info("  {}: {}".format(var, eval(var)))
 
     # experiment files
@@ -695,23 +697,23 @@ if __name__ == '__main__':
         loss_avg = 0.
         loss_min = np.inf
         loss_max = -np.inf
-        for batch_i, doc_id in enumerate(train_doc_ids):
+        batches = make_batches(len(train_doc_ids), batch_size)
+        for batch_i, (batch_start, batch_end) in enumerate(batches):
             # prepare batch data
-            doc_ids = [doc_id]
-            from pprint import pprint
+            doc_ids = train_doc_ids[batch_start:batch_end]
 
             x_word_pad, x_word_rand = build_x_word(doc_ids, train_words, word2id, word_crop, max_len)
-            #print("x_word_pad:"); pprint(x_word_pad)
-            #print("x_word_rand:"); pprint(x_word_rand)
+            #print("x_word_pad:", x_word_pad.shape); pprint(x_word_pad)
+            #print("x_word_rand:", x_word_rand.shape); pprint(x_word_rand)
 
             y_skipgram = build_y_skipgram(x_word_pad, skipgram_offsets, max_len)
-            #print("y_skipgram:"); pprint(y_skipgram)
+            #print("y_skipgram:", y_skipgram.shape); pprint(y_skipgram)
 
             y_pos = build_y_pos(doc_ids, train_words, pos2id, word_crop, max_len)
-            #print("y_pos:"); pprint(y_pos)
+            #print("y_pos:", y_pos.shape); pprint(y_pos)
 
             y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, word_crop, max_len)
-            #print("y_pdtbpair:"); pprint(y_pdtbpair)
+            #print("y_pdtbpair:", y_pdtbpair.shape); pprint(y_pdtbpair)
 
             # train on batch
             loss = model.train_on_batch({

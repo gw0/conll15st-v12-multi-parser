@@ -9,7 +9,7 @@ __license__ = "GPLv3+"
 
 from keras.models import Graph
 from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute
-from keras.layers.advanced_activations import PReLU
+from keras.layers.advanced_activations import ParametricSoftplus
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
 
@@ -59,9 +59,9 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
 
     #2
     model.add_node(TimeDistributedDense2(2 * embedding_dim), name='pdtbpair_dense2', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
-    model.add_node(PReLU(), name='pdtbpair_tanh2', input='pdtbpair_dense2')
+    model.add_node(ParametricSoftplus(), name='pdtbpair_tanh2', input='pdtbpair_dense2')
     model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair_tanh2')
-    model.add_node(PReLU(), name='pdtbpair_tanh', input='pdtbpair_dense')
+    model.add_node(ParametricSoftplus(), name='pdtbpair_tanh', input='pdtbpair_dense')
 
     #3
     # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_permute', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
