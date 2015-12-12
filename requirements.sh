@@ -6,12 +6,13 @@
 
 NAME="(`basename $(realpath ${0%/*})`)"
 SRC="venv/src"
+PYTHON_EXE="python2"
 SITE_PACKAGES='venv/lib/python*/site-packages'
 DIST_PACKAGES='/usr/lib/python*/dist-packages'
-PYTHON_EXE="python2"
 
+# Initialization
 sudo() { [ -x "/usr/bin/sudo" ] && /usr/bin/sudo "$@" || "$@"; }
-[ "$PYTHON_EXE" -eq "pypy" -a ! -x "/usr/bin/$PYTHON_EXE" ] && sudo aptitude install pypy
+[ ! -x "/usr/bin/$PYTHON_EXE" ] && sudo aptitude install "$PYTHON_EXE"
 
 cd "${0%/*}"
 virtualenv --prompt="$NAME" --python="$PYTHON_EXE"  venv || exit 1
@@ -37,10 +38,10 @@ sudo aptitude install libyaml-dev
 pip install git+https://github.com/Theano/Theano.git
 pip install h5py
 pip install pydot-ng
-pip install -e git+https://github.com/fchollet/keras.git#egg=Keras
+pip install git+https://github.com/fchollet/keras.git
 
 # Workarounds for keras
-sed -i 's/^import pydot$/import pydot_ng as pydot\nfrom keras.models import Sequential, Graph/' $SITE_PACKAGES/keras/utils/visualize_util.py
+sed -i 's/^import pydot$/import pydot_ng as pydot/' $SRC/keras/utils/visualize_util.py
 
 echo
 echo "Use: . venv/bin/activate"
