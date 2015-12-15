@@ -8,7 +8,7 @@ __author__ = "GW [http://gw.tnode.com/] <gw.2015@tnode.com>"
 __license__ = "GPLv3+"
 
 from keras.models import Graph
-from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute
+from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute, Dropout
 from keras.layers.advanced_activations import ParametricSoftplus
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM
@@ -27,8 +27,9 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     #model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # layer 1: word embedding lookup table (doc, time_pad, emb)
-    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='layer_1', input='x_word_pad')
+    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='lecun_uniform'), name='layer_1', input='x_word_pad')
     #XXX: mask_zero=True
+    #model.add_node(Dropout(0.1), name='layer_1', input='layer_1_')
 
     # skip-gram model: context embedding lookup table (doc, time_pad, emb)
     #model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name='skipgram_emb', input='x_word_rand')
@@ -41,7 +42,8 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     #model.add_node(TimeDistributedMerge2(mode='sum', axis=3), name='skipgram_mul', inputs=['skipgram_repeat', 'skipgram_offsets'], merge_mode='mul')
 
     # layer 2: forward LSTM sequence (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True), name='layer_2', input='layer_1')
+    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='tanh', inner_activation='tanh', init='orthogonal', inner_init='orthogonal'), name='layer_2', input='layer_1')
+    #model.add_node(Dropout(0.1), name='layer_2', input='layer_2_')
 
     # POS model: POS tag dense neural network (doc, time_pad, pos2id)
     #model.add_node(TimeDistributedDense(pos2id_size), name='pos_dense', input='layer_2')
@@ -55,21 +57,22 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
 
     #1
     #model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
-    #model.add_node(Activation('tanh'), name='pdtbpair_tanh', input='pdtbpair_dense')
+    #model.add_node(Activation('relu'), name='pdtbpair_sigmoid', input='pdtbpair_dense')
 
     #2
-    model.add_node(TimeDistributedDense2(2 * embedding_dim), name='pdtbpair_dense2', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
-    model.add_node(ParametricSoftplus(), name='pdtbpair_tanh2', input='pdtbpair_dense2')
-    model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair_tanh2')
-    model.add_node(ParametricSoftplus(), name='pdtbpair_tanh', input='pdtbpair_dense')
+    # model.add_node(TimeDistributedDense2(2 * embedding_dim, init='orthogonal'), name='pdtbpair_dense2', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    # model.add_node(Activation('tanh'), name='pdtbpair_sigmoid2', input='pdtbpair_dense2')
+    # #model.add_node(Dropout(0.1), name='pdtbpair_sigmoid2', input='pdtbpair_sigmoid2_')
+    # model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair_sigmoid2')
+    # model.add_node(Activation('tanh'), name='pdtbpair_sigmoid', input='pdtbpair_dense')
 
     #3
-    # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_permute', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
-    # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets)), name='pdtbpair2_dense', input='pdtbpair2_permute')
-    # model.add_node(Activation('tanh'), name='pdtbpair2_tanh', input='pdtbpair2_dense')
-    # model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_unpermute', input='pdtbpair2_tanh')
-    # model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair2_unpermute')
-    # model.add_node(Activation('tanh'), name='pdtbpair_tanh', input='pdtbpair_dense')
+    model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_permute', inputs=['pdtbpair_repeat', 'pdtbpair_offsets'], merge_mode='concat')
+    model.add_node(TimeDistributedDense2(len(pdtbpair_offsets)), name='pdtbpair2_dense', input='pdtbpair2_permute')
+    model.add_node(Activation('tanh'), name='pdtbpair2_sigmoid', input='pdtbpair2_dense')
+    model.add_node(Permute(dims=(1, 3, 2)), name='pdtbpair2_unpermute', input='pdtbpair2_sigmoid')
+    model.add_node(TimeDistributedDense2(pdtbpair2id_size), name='pdtbpair_dense', input='pdtbpair2_unpermute')
+    model.add_node(Activation('tanh'), name='pdtbpair_sigmoid', input='pdtbpair_dense')
 
     # output: skip-gram labels (doc, time_pad, offset)
     #model.add_output(name='y_skipgram', input='skipgram_mul')
@@ -78,9 +81,9 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     #model.add_output(name='y_pos', input='pos_softmax')
 
     # output: PDTB-style discourse relation pairwise occurrences (doc, time, offset, pdtbpair2id)
-    model.add_output(name='y_pdtbpair', input='pdtbpair_tanh')
+    model.add_output(name='y_pdtbpair', input='pdtbpair_sigmoid')
 
-    #model.compile(optimizer='rmsprop', loss={'y_skipgram': 'mse', 'y_pos': 'binary_crossentropy', 'y_pdtbpair': 'mse'})
+    #model.compile(optimizer='adam', loss={'y_skipgram': 'mse', 'y_pos': 'binary_crossentropy', 'y_pdtbpair': 'mse'})
     model.compile(optimizer='adam', loss={'y_pdtbpair': 'mse'})
     return model
 

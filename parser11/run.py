@@ -574,7 +574,7 @@ if __name__ == '__main__':
     epochs = 1000
     batch_size = 10
 
-    word_crop = 1000  #= max([ len(s)  for s in train_words ])
+    word_crop = 10000  #= max([ len(s)  for s in train_words ])
     embedding_dim = 40  #40
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
@@ -585,7 +585,7 @@ if __name__ == '__main__':
     pdtbpair_window_size = 20  #20
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
-    filter_prefixes = ["Explicit:Expansion.Conjunction"]
+    filter_prefixes = ["Explicit:Expansion.Conjunction:1"]
     rtype = filter_prefixes[0].split(":")[0]
     rsense = filter_prefixes[0].split(":")[1]
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
@@ -650,6 +650,21 @@ if __name__ == '__main__':
         with open(pdtbpair2id_pkl, 'rb') as f:
             pdtbpair2id, pdtbpair2id_weights = pickle.load(f)
     log.info("  word2id: {}, pos2id: {}, pdtbpair2id: {}".format(len(word2id), len(pos2id), len(pdtbpair2id)))
+
+    # estimate max achievable results
+    relations_list = []
+    for batch_i, doc_id in enumerate(train_doc_ids):
+        # prepare batch data
+        doc_ids = [doc_id]
+        y_pdtbpair = build_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, word_crop, max_len)
+
+        # interpret predictions as relations
+        all_relations = interpret_y_pdtbpair(doc_ids, train_words, y_pdtbpair, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
+        relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
+
+    # evaluate relations on gold dataset
+    train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
+    log.info("  max achievable train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list)))
 
     # build model
     log.info("build model")
@@ -726,13 +741,23 @@ if __name__ == '__main__':
             loss = float(loss[0])
 
             #XXX
-            #aa = {
+            # aa = {
             #    'x_word_pad': x_word_pad,
             #    'x_word_rand': x_word_rand,
             #    'y_skipgram': y_skipgram,
             #    'y_pos': y_pos,
             #    'y_pdtbpair': y_pdtbpair,
-            #}
+            # }
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = model.train_on_batch(aa)
+            # loss = float(loss[0])
             # print "layer_1"
             # layer_1 = arch.get_activations(model, 'layer_1', aa)
             # pprint(layer_1[0].shape)
