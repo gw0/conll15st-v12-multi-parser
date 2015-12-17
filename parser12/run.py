@@ -218,22 +218,22 @@ if __name__ == '__main__':
     args = argp.parse_args()
 
     # defaults
-    epochs = 1000
+    epochs = 10000
     batch_size = 10
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 40  #40
+    embedding_dim = 100  #100
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 0  #skipgram_window_size
     skipgram_offsets = conv_window_to_offsets(skipgram_window_size, skipgram_negative_samples, word_crop)
-    pos2id_size = 20  #= None is computed
-    pdtbmark2id_size = 7  #=7 is fixed
-    pdtbpair2id_size = 16  #=16 is fixed
-    pdtbpair_window_size = 20  #20
+    pos2id_size = 5  #= None is computed
+    pdtbmark2id_size = None  #=7 is fixed
+    pdtbpair2id_size = None  #=16 is fixed
+    pdtbpair_window_size = 20  #40
     pdtbpair_negative_samples = 0  #1
     pdtbpair_offsets = conv_window_to_offsets(pdtbpair_window_size, pdtbpair_negative_samples, word_crop)
-    filter_prefixes = ["Explicit:Expansion.Conjunction:1"]
+    filter_prefixes = ["Explicit:Expansion.Conjunction"]
     rtype = filter_prefixes[0].split(":")[0]
     rsense = filter_prefixes[0].split(":")[1]
     max_len = word_crop + max(abs(min(skipgram_offsets)), abs(max(skipgram_offsets)), abs(min(pdtbpair_offsets)), abs(max(pdtbpair_offsets)))
@@ -287,7 +287,7 @@ if __name__ == '__main__':
         pos2id = pos.build_pos2id(train_words, max_size=pos2id_size)
         with open(pos2id_pkl, 'wb') as f:
             pickle.dump(pos2id, f)
-        pdtbmark2id = pdtbmark.build_pdtbmark2id()
+        pdtbmark2id, pdtbmark2id_size = pdtbmark.build_pdtbmark2id()
         with open(pdtbmark2id_pkl, 'wb') as f:
             pickle.dump(pdtbmark2id, f)
         pdtbpair2id, pdtbpair2id_weights = pdtbpair.build_pdtbpair2id()
@@ -300,10 +300,10 @@ if __name__ == '__main__':
         with open(pos2id_pkl, 'rb') as f:
             pos2id = pickle.load(f)
         with open(pdtbmark2id_pkl, 'rb') as f:
-            pdtbmark2id = pickle.load(f)
+            pdtbmark2id, pdtbmark2id_size = pickle.load(f)
         with open(pdtbpair2id_pkl, 'rb') as f:
             pdtbpair2id, pdtbpair2id_weights = pickle.load(f)
-    log.info("  word2id: {}, pos2id: {}, pdtbmark2id: {}, pdtbpair2id: {}".format(len(word2id), len(pos2id), len(pdtbmark2id), len(pdtbpair2id)))
+    log.info("  word2id: {}, pos2id: {}, pdtbmark2id: {}, pdtbpair2id: {}".format(len(word2id), len(pos2id), pdtbmark2id_size, len(pdtbpair2id)))
 
     # estimate max achievable results
     relations_list = []
@@ -322,7 +322,7 @@ if __name__ == '__main__':
 
     # build model
     log.info("build model")
-    model = arch.build(max_len, embedding_dim, len(word2id), skipgram_offsets, len(pos2id), len(pdtbmark2id), len(pdtbpair2id), pdtbpair_offsets)
+    model = arch.build(max_len, embedding_dim, len(word2id), skipgram_offsets, len(pos2id), pdtbmark2id_size, len(pdtbpair2id), pdtbpair_offsets)
 
     # plot model
     with open(model_yaml, 'w') as f:
@@ -381,7 +381,7 @@ if __name__ == '__main__':
             y_pos = pos.encode_y_pos(doc_ids, train_words, pos2id, word_crop, max_len)
             #print("y_pos:", y_pos.shape); pprint(y_pos)
 
-            y_pdtbmark = pdtbmark.encode_y_pdtbmark(doc_ids, train_words, pdtbmark2id, word_crop, max_len)
+            y_pdtbmark = pdtbmark.encode_y_pdtbmark(doc_ids, train_words, pdtbmark2id, pdtbmark2id_size, word_crop, max_len)
             #print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark)
 
             y_pdtbpair = pdtbpair.encode_y_pdtbpair(doc_ids, train_words, pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, word_crop, max_len)
@@ -398,46 +398,6 @@ if __name__ == '__main__':
             })
             loss = float(loss[0])
 
-            #XXX
-            # aa = {
-            #    'x_word_pad': x_word_pad,
-            #    'x_word_rand': x_word_rand,
-            #    'y_skipgram': y_skipgram,
-            #    'y_pos': y_pos,
-            #    'y_pdtbpair': y_pdtbpair,
-            # }
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = model.train_on_batch(aa)
-            # loss = float(loss[0])
-            # print "layer_1"
-            # layer_1 = arch.get_activations(model, 'layer_1', aa)
-            # pprint(layer_1[0].shape)
-            # pprint(layer_1[0])
-            # print "layer_2"
-            # layer_2 = arch.get_activations(model, 'layer_2', aa)
-            # pprint(layer_2[0].shape)
-            # pprint(layer_2[0])
-            # print "pdtbpair_offsets"
-            # pdtbpair_offsets = arch.get_activations(model, 'pdtbpair_offsets', aa)
-            # pprint(pdtbpair_offsets[0].shape)
-            # pprint(pdtbpair_offsets[0])
-            # print "pdtbpair_repeat"
-            # pdtbpair_repeat = arch.get_activations(model, 'pdtbpair_repeat', aa)
-            # pprint(pdtbpair_repeat[0].shape)
-            # pprint(pdtbpair_repeat[0])
-            # print "pdtbpair_dense"
-            # pdtbpair_dense = arch.get_activations(model, 'pdtbpair_dense', aa)
-            # pprint(pdtbpair_dense[0].shape)
-            # pprint(pdtbpair_dense[0])
-            # raise Exception()
-
             # compute stats
             loss_avg += loss
             if loss < loss_min:
@@ -445,34 +405,49 @@ if __name__ == '__main__':
             if loss > loss_max:
                 loss_max = loss
 
-        loss_avg /= len(train_doc_ids)
-        time_1 = time.time()
-        log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.2f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
-
-        # validate model on training dataset
-        relations_list = []
-        for batch_i, doc_id in enumerate(train_doc_ids):
-
-            # prepare batch data
-            doc_ids = [doc_id]
-            x_word_pad, x_word_rand = build_x_word(doc_ids, train_words, word2id, word_crop, max_len)
-
-            # interpret predictions as relations
+            #XXX
             y = model.predict({
                 'x_word_pad': x_word_pad,
                 'x_word_rand': x_word_rand,
             })
-            all_relations = pdtbpair.decode_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
-            relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
+            np.set_printoptions(precision=2, suppress=True)
+            from pprint import pprint
+            # {None: 0, '': 1, u'NN': 2, u'NNP': 3, u'IN': 4}
+            # print("y_pos:", y_pos.shape); pprint(y_pos[0][408:428])
+            # print("y[y_pos]:", y['y_pos'].shape); pprint(y['y_pos'][0][408:428])
+            print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark[0][408:428])
+            print("y[y_pdtbmark]:", y['y_pdtbmark'].shape); pprint(y['y_pdtbmark'][0][408:428])
 
-        # evaluate relations on training dataset
-        train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
-        time_2 = time.time()
-        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.2f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
-        if len(relations_list) > 0 and (train_precision > 0. or train_recall > 0. or train_f1 > 0.):
-            print "  WOOHOOO!!!"
+        loss_avg /= len(train_doc_ids) / float(batch_size)
+        time_1 = time.time()
+        log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.2f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
+
+        # # validate model on training dataset
+        # relations_list = []
+        # for batch_i, doc_id in enumerate(train_doc_ids):
+
+        #     # prepare batch data
+        #     doc_ids = [doc_id]
+        #     x_word_pad, x_word_rand = build_x_word(doc_ids, train_words, word2id, word_crop, max_len)
+
+        #     # interpret predictions as relations
+        #     y = model.predict({
+        #         'x_word_pad': x_word_pad,
+        #         'x_word_rand': x_word_rand,
+        #     })
+        #     all_relations = pdtbpair.decode_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
+        #     relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
+
+        # # evaluate relations on training dataset
+        # train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
+        # time_2 = time.time()
+        # log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.2f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
+        # if len(relations_list) > 0 and (train_precision > 0. or train_recall > 0. or train_f1 > 0.):
+        #     print "  WOOHOOO!!!"
 
         #XXX
+        train_precision = train_recall = train_f1 = -1
+        time_2 = time.time()
         valid_precision = valid_recall = valid_f1 = -1
         time_3 = time.time()
 

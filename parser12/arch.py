@@ -28,38 +28,41 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     # input: word ids with masked post-padding (doc, time_pad)
     model.add_input(name='x_word_pad', input_shape=(None,), dtype='int')
 
-    # input: word ids with random post-padding (doc, time_pad)
-    model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
+    # # input: word ids with random post-padding (doc, time_pad)
+    # model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # shared 1: word embedding layer (doc, time_pad, emb)
     model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='lecun_uniform'), name='shared_1', input='x_word_pad')
     #XXX: mask_zero=True
 
     # shared 2: forward LSTM full sequence layer (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='tanh', inner_activation='tanh', init='orthogonal', inner_init='orthogonal'), name='shared_2', input='shared_1')
+    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_2', input='shared_1')
 
     # shared 3: forward LSTM full sequence layer (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='tanh', inner_activation='tanh', init='orthogonal', inner_init='orthogonal'), name='shared_3', input='shared_2')
+    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_3', input='shared_2')
 
-    # skip-gram model: skip-gram labels (doc, time_pad, offset)
-    skipgram_out = skipgram_model(model, ['shared_1', 'x_word_rand'], max_len, embedding_dim, word2id_size, skipgram_offsets)
-    model.add_output(name='y_skipgram', input=skipgram_out)
-    loss['y_skipgram'] = 'mse'
+    # shared 4: forward LSTM full sequence layer (doc, time_pad, repr)
+    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_4', input='shared_3')
 
-    # POS model: POS tags (doc, time_pad, pos2id)
-    pos_out = pos_model(model, ['shared_2'], pos2id_size)
-    model.add_output(name='y_pos', input=pos_out)
-    loss['y_pos'] = 'binary_crossentropy'
+    # # skip-gram model: skip-gram labels (doc, time_pad, offset)
+    # skipgram_out = skipgram_model(model, ['shared_1', 'x_word_rand'], max_len, embedding_dim, word2id_size, skipgram_offsets)
+    # model.add_output(name='y_skipgram', input=skipgram_out)
+    # loss['y_skipgram'] = 'mse'
+
+    # # POS model: POS tags (doc, time_pad, pos2id)
+    # pos_out = pos_model(model, ['shared_2'], max_len, embedding_dim, pos2id_size)
+    # model.add_output(name='y_pos', input=pos_out)
+    # loss['y_pos'] = 'binary_crossentropy'
 
     # PDTB marking model: discourse relation boundary markers (doc, time, offset, pdtbmark2id)
-    pdtbmark_out = pdtbmark_model(model, ['shared_3'], pdtbmark2id_size)
+    pdtbmark_out = pdtbmark_model(model, ['shared_4'], max_len, embedding_dim, pdtbmark2id_size)
     model.add_output(name='y_pdtbmark', input=pdtbmark_out)
-    loss['y_pdtbmark'] = 'mse'
+    loss['y_pdtbmark'] = 'binary_crossentropy'
 
-    # PDTB pairs model: discourse relation span-pair occurrences (doc, time, offset, pdtbpair2id)
-    pdtbpair_out = pdtbpair_model(model, ['shared_3'], embedding_dim, pdtbpair2id_size, pdtbpair_offsets)
-    model.add_output(name='y_pdtbpair', input=pdtbpair_out)
-    loss['y_pdtbpair'] = 'mse'
+    # # PDTB pairs model: discourse relation span-pair occurrences (doc, time, offset, pdtbpair2id)
+    # pdtbpair_out = pdtbpair_model(model, ['shared_3'], max_len, embedding_dim, pdtbpair2id_size, pdtbpair_offsets)
+    # model.add_output(name='y_pdtbpair', input=pdtbpair_out)
+    # loss['y_pdtbpair'] = 'binary_crossentropy'
 
     model.compile(optimizer='adam', loss=loss)
     return model
