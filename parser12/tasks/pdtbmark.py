@@ -12,8 +12,6 @@ import numpy as np
 
 from conll15st_relations import filter_tags, tag_to_rtsns
 
-_MARK = 'IO'
-
 
 ### Model
 
@@ -21,17 +19,17 @@ def pdtbmark_model(model, ins, max_len, embedding_dim, pdtbmark2id_size, pre='pd
     """PDTB marking model as Keras Graph."""
 
     # PDTB marking dense neural network (doc, time_pad, pdtbmark2id)
-    model.add_node(TimeDistributedDense(pdtbmark2id_size, init='orthogonal'), name=pre + '_dense', input=ins[0])
+    model.add_node(TimeDistributedDense(pdtbmark2id_size, init='he_uniform'), name=pre + '_dense', input=ins[0])
     model.add_node(Activation('softmax'), name=pre + '_softmax', input=pre + '_dense')
     return pre + '_softmax'
 
 
 ### Build indexes
 
-def build_pdtbmark2id():
+def build_pdtbmark2id(mode='IO'):
     """Build PDTB discourse relation boundary markers index."""
 
-    if _MARK == 'IOBES':
+    if mode == 'IOBES':
         pdtbmark2id = {
             "O": [0],
             "B-Arg1": [1],
@@ -47,7 +45,7 @@ def build_pdtbmark2id():
             "E-Connective": [11],
             "S-Connective": [12],
         }
-    elif _MARK == 'BE':
+    elif mode == 'BE':
         pdtbmark2id = {
             "O": [0],
             "B-Arg1": [1],
@@ -63,7 +61,7 @@ def build_pdtbmark2id():
             "E-Connective": [6],
             "S-Connective": [5, 6],
         }
-    elif _MARK == 'IO':
+    elif mode == 'IO':
         pdtbmark2id = {
             "O": [0],
             "B-Arg1": [1],

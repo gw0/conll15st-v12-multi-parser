@@ -8,10 +8,10 @@ __author__ = "GW [http://gw.tnode.com/] <gw.2015@tnode.com>"
 __license__ = "GPLv3+"
 
 from keras.models import Graph
-from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute, Dropout
+from keras.layers.core import Activation, Layer, MaskedLayer, TimeDistributedDense, Permute, Dropout, ActivityRegularization
 from keras.layers.advanced_activations import ParametricSoftplus
 from keras.layers.embeddings import Embedding
-from keras.layers.recurrent import LSTM
+from keras.layers.recurrent import GRU
 
 from layers.roll import RollOffsets, RepeatVector2, TimeDistributedMerge2, TimeDistributedDense2
 from tasks.skipgram import skipgram_model
@@ -32,17 +32,36 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     # model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # shared 1: word embedding layer (doc, time_pad, emb)
-    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='lecun_uniform'), name='shared_1', input='x_word_pad')
+    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='glorot_uniform'), name='shared_1', input='x_word_pad')
     #XXX: mask_zero=True
 
-    # shared 2: forward LSTM full sequence layer (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_2', input='shared_1')
+    # shared 2: forward GRU full sequence layer (doc, time_pad, repr)
+    model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_2_gru', input='shared_1')
+    #model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_2', input='shared_2_gru')
 
-    # shared 3: forward LSTM full sequence layer (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_3', input='shared_2')
+    # shared 3: forward GRU full sequence layer (doc, time_pad, repr)
+    model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_3_gru', input='shared_2_gru')
+    # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_3', input='shared_3_gru')
 
-    # shared 4: forward LSTM full sequence layer (doc, time_pad, repr)
-    model.add_node(LSTM(embedding_dim, return_sequences=True, activation='sigmoid', inner_activation='sigmoid', init='zero', inner_init='orthogonal'), name='shared_4', input='shared_3')
+    # shared 4: forward GRU full sequence layer (doc, time_pad, repr)
+    model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_4_gru', input='shared_3_gru')
+    # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_4', input='shared_4_gru')
+
+    # # shared 5: forward GRU full sequence layer (doc, time_pad, repr)
+    # model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_5_gru', input='shared_4_gru')
+    # # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_5', input='shared_5_gru')
+
+    # # shared 6: forward GRU full sequence layer (doc, time_pad, repr)
+    # model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_6_gru', input='shared_5_gru')
+    # # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_6', input='shared_6_gru')
+
+    # # shared 7: forward GRU full sequence layer (doc, time_pad, repr)
+    # model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_7_gru', input='shared_6_gru')
+    # # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_7', input='shared_7_gru')
+
+    # # shared 8: forward GRU full sequence layer (doc, time_pad, repr)
+    # model.add_node(GRU(embedding_dim, return_sequences=True, activation='relu', inner_activation='hard_sigmoid', init='he_uniform', inner_init='orthogonal'), name='shared_8_gru', input='shared_7_gru')
+    # # model.add_node(ActivityRegularization(l1=0.01, l2=0.01), name='shared_8', input='shared_8_gru')
 
     # # skip-gram model: skip-gram labels (doc, time_pad, offset)
     # skipgram_out = skipgram_model(model, ['shared_1', 'x_word_rand'], max_len, embedding_dim, word2id_size, skipgram_offsets)
@@ -55,16 +74,16 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     # loss['y_pos'] = 'binary_crossentropy'
 
     # PDTB marking model: discourse relation boundary markers (doc, time, offset, pdtbmark2id)
-    pdtbmark_out = pdtbmark_model(model, ['shared_4'], max_len, embedding_dim, pdtbmark2id_size)
+    pdtbmark_out = pdtbmark_model(model, ['shared_4_gru'], max_len, embedding_dim, pdtbmark2id_size)
     model.add_output(name='y_pdtbmark', input=pdtbmark_out)
     loss['y_pdtbmark'] = 'binary_crossentropy'
 
     # # PDTB pairs model: discourse relation span-pair occurrences (doc, time, offset, pdtbpair2id)
-    # pdtbpair_out = pdtbpair_model(model, ['shared_3'], max_len, embedding_dim, pdtbpair2id_size, pdtbpair_offsets)
+    # pdtbpair_out = pdtbpair_model(model, ['shared_8_gru'], max_len, embedding_dim, pdtbpair2id_size, pdtbpair_offsets)
     # model.add_output(name='y_pdtbpair', input=pdtbpair_out)
     # loss['y_pdtbpair'] = 'binary_crossentropy'
 
-    model.compile(optimizer='adam', loss=loss)
+    model.compile(optimizer='rmsprop', loss=loss)
     return model
 
 

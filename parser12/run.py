@@ -222,7 +222,7 @@ if __name__ == '__main__':
     batch_size = 10
 
     word_crop = 1000  #= max([ len(s)  for s in train_words ])
-    embedding_dim = 100  #100
+    embedding_dim = 40  #100
     word2id_size = 50000  #= None is computed
     skipgram_window_size = 4
     skipgram_negative_samples = 0  #skipgram_window_size
@@ -287,9 +287,9 @@ if __name__ == '__main__':
         pos2id = pos.build_pos2id(train_words, max_size=pos2id_size)
         with open(pos2id_pkl, 'wb') as f:
             pickle.dump(pos2id, f)
-        pdtbmark2id, pdtbmark2id_size = pdtbmark.build_pdtbmark2id()
+        pdtbmark2id, pdtbmark2id_size = pdtbmark.build_pdtbmark2id(mode='IO')
         with open(pdtbmark2id_pkl, 'wb') as f:
-            pickle.dump(pdtbmark2id, f)
+            pickle.dump((pdtbmark2id, pdtbmark2id_size), f)
         pdtbpair2id, pdtbpair2id_weights = pdtbpair.build_pdtbpair2id()
         with open(pdtbpair2id_pkl, 'wb') as f:
             pickle.dump((pdtbpair2id, pdtbpair2id_weights), f)
@@ -406,17 +406,22 @@ if __name__ == '__main__':
                 loss_max = loss
 
             #XXX
-            y = model.predict({
-                'x_word_pad': x_word_pad,
-                'x_word_rand': x_word_rand,
-            })
-            np.set_printoptions(precision=2, suppress=True)
-            from pprint import pprint
-            # {None: 0, '': 1, u'NN': 2, u'NNP': 3, u'IN': 4}
-            # print("y_pos:", y_pos.shape); pprint(y_pos[0][408:428])
-            # print("y[y_pos]:", y['y_pos'].shape); pprint(y['y_pos'][0][408:428])
-            print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark[0][408:428])
-            print("y[y_pdtbmark]:", y['y_pdtbmark'].shape); pprint(y['y_pdtbmark'][0][408:428])
+            try:
+                xx_i, xx_f, xx_l = doc_ids.index('wsj_1000'), 408, 428
+                #xx_i, xx_f, xx_l = doc_ids.index('wsj_2205'), 461, 480
+                y = model.predict({
+                    'x_word_pad': x_word_pad,
+                    'x_word_rand': x_word_rand,
+                })
+                np.set_printoptions(precision=2, suppress=True)
+                from pprint import pprint
+                # {None: 0, '': 1, u'NN': 2, u'NNP': 3, u'IN': 4}
+                # print("y_pos:", y_pos.shape); pprint(y_pos[xx_i][xx_f:xx_l])
+                # print("y[y_pos]:", y['y_pos'].shape); pprint(y['y_pos'][xx_i][xx_f:xx_l])
+                print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark[xx_i][xx_f:xx_l])
+                print("y[y_pdtbmark]:", y['y_pdtbmark'].shape); pprint(y['y_pdtbmark'][xx_i][xx_f:xx_l])
+            except:
+                pass
 
         loss_avg /= len(train_doc_ids) / float(batch_size)
         time_1 = time.time()

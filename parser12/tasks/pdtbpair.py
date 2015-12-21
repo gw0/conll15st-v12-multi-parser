@@ -16,34 +16,35 @@ from conll15st_relations import filter_tags, tag_to_rtsns
 
 ### Model
 
-def pdtbpair_model(model, ins, embedding_dim, pdtbpair2id_size, pdtbpair_offsets, pre='pdtbpair'):
+def pdtbpair_model(model, ins, max_len, embedding_dim, pdtbpair2id_size, pdtbpair_offsets, pre='pdtbpair'):
     """PDTB pairs model of discourse relation span-pair occurrences as Keras Graph."""
 
-    # roll context to offsets (doc, time_pad, offset, repr)
+    # repeat word vector (doc, time_pad, repeat, repr)
+    model.add_node(RepeatVector2(len(pdtbpair_offsets), axis=2), name=pre + '_repeat', input=ins[0])
+
+    # roll context vector to offsets (doc, time_pad, offset, repr)
     model.add_node(RollOffsets(pdtbpair_offsets, axis=1), name=pre + '_offsets', input=ins[0])
 
     # dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id)
-    model.add_node(RepeatVector2(len(pdtbpair_offsets), axis=2), name=pre + '_repeat', input=ins[0])
-
     #1
-    #model.add_node(TimeDistributedDense2(pdtbpair2id_size), name=pre + '_dense', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
-    #model.add_node(Activation('relu'), name=pre + '_tanh', input=pre + '_dense')
+    #model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
+    #model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
 
     #2
-    model.add_node(TimeDistributedDense2(2 * embedding_dim, init='orthogonal'), name=pre + '_dense2', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
-    model.add_node(Activation('tanh'), name=pre + '_tanh2', input=pre + '_dense2')
-    #model.add_node(Dropout(0.1), name=pre + '_tanh2', input=pre + '_tanh2_')
-    model.add_node(TimeDistributedDense2(pdtbpair2id_size), name=pre + '_dense', input=pre + '_tanh2')
-    model.add_node(Activation('tanh'), name=pre + '_tanh', input=pre + '_dense')
+    model.add_node(TimeDistributedDense2(2 * embedding_dim, init='he_uniform'), name=pre + '_dense2', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
+    model.add_node(Activation('relu'), name=pre + '_act2', input=pre + '_dense2')
+    #model.add_node(Dropout(0.1), name=pre + '_act2', input=pre + '_act2_')
+    model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', input=pre + '_act2')
+    model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
 
     #3
     # model.add_node(Permute(dims=(1, 3, 2)), name=pre + '_permute2', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
-    # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets)), name=pre + '_dense2', input=pre + '_permute2')
-    # model.add_node(Activation('tanh'), name=pre + '_sigmoid2', input=pre + '_dense2')
+    # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets), init='he_uniform'), name=pre + '_dense2', input=pre + '_permute2')
+    # model.add_node(Activation('relu'), name=pre + '_sigmoid2', input=pre + '_dense2')
     # model.add_node(Permute(dims=(1, 3, 2)), name=pre + '_unpermute2', input=pre + '_sigmoid2')
-    # model.add_node(TimeDistributedDense2(pdtbpair2id_size), name=pre + '_dense', input=pre + '_unpermute2')
-    # model.add_node(Activation('tanh'), name=pre + '_tanh', input=pre + '_dense')
-    return pre + '_tanh'
+    # model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', input=pre + '_unpermute2')
+    # model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
+    return pre + '_act'
 
 
 ### Build indexes
@@ -322,7 +323,7 @@ def decode_y_pdtbpair(doc_ids, all_words, y_pdtbpair, pdtbpair_offsets, pdtbpair
             relation['Arg2'] = {'TokenList': arg2_token_list}
             relation['Connective'] = {'TokenList': conn_token_list}
 
-            if doc_id in ["wsj_1000", "wsj_2214"]:  #XXX
+            if doc_id in ["wsj_1000", "wsj_2205"]:  #XXX
                 print
                 print doc_id, len(all_relations[doc_id]), "fitness: {:.4f}".format(sets['fitness']), "sizes:", len(sets['Arg1']), len(sets['Arg2']), len(sets['Connective']), len(sets['Rest'])
                 print "arg1_set:", len(arg1_token_list), list_compaction(arg1_token_list)

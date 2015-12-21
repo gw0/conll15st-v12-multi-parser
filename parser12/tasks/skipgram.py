@@ -19,7 +19,7 @@ def skipgram_model(model, ins, max_len, embedding_dim, word2id_size, skipgram_of
     """Skip-gram with negative sampling model as Keras Graph."""
 
     # context embedding lookup table (doc, time_pad, emb)
-    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len), name=pre + '_emb', input=ins[1])
+    model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='lecun_uniform'), name=pre + '_emb', input=ins[1])
 
     # repeat word vectors (doc, time_pad, offset, emb)
     model.add_node(RepeatVector2(len(skipgram_offsets), axis=2), name=pre + '_repeat', input=ins[0])

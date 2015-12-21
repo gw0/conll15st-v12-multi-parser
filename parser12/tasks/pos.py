@@ -13,11 +13,11 @@ import numpy as np
 
 ### Model
 
-def pos_model(model, ins, pos2id_size, pre='pos'):
+def pos_model(model, ins, max_len, embedding_dim, pos2id_size, pre='pos'):
     """POS tagging model as Keras Graph."""
 
     # POS tag dense neural network (doc, time_pad, pos2id)
-    model.add_node(TimeDistributedDense(pos2id_size), name=pre + '_dense', input=ins[0])
+    model.add_node(TimeDistributedDense(pos2id_size, init='he_uniform'), name=pre + '_dense', input=ins[0])
     model.add_node(Activation('softmax'), name=pre + '_softmax', input=pre + '_dense')
     return pre + '_softmax'
 
