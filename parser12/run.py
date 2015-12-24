@@ -405,54 +405,54 @@ if __name__ == '__main__':
             if loss > loss_max:
                 loss_max = loss
 
-            #XXX
-            try:
-                xx_i, xx_f, xx_l = doc_ids.index('wsj_1000'), 408, 428
-                #xx_i, xx_f, xx_l = doc_ids.index('wsj_2205'), 461, 480
-                y = model.predict({
-                    'x_word_pad': x_word_pad,
-                    'x_word_rand': x_word_rand,
-                })
-                np.set_printoptions(precision=2, suppress=True)
-                from pprint import pprint
-                # {None: 0, '': 1, u'NN': 2, u'NNP': 3, u'IN': 4}
-                # print("y_pos:", y_pos.shape); pprint(y_pos[xx_i][xx_f:xx_l])
-                # print("y[y_pos]:", y['y_pos'].shape); pprint(y['y_pos'][xx_i][xx_f:xx_l])
-                print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark[xx_i][xx_f:xx_l])
-                print("y[y_pdtbmark]:", y['y_pdtbmark'].shape); pprint(y['y_pdtbmark'][xx_i][xx_f:xx_l])
-            except:
-                pass
+            # #XXX
+            # try:
+            #     xx_i, xx_f, xx_l = doc_ids.index('wsj_1000'), 408, 428
+            #     #xx_i, xx_f, xx_l = doc_ids.index('wsj_2205'), 461, 480
+            #     y = model.predict({
+            #         'x_word_pad': x_word_pad,
+            #         'x_word_rand': x_word_rand,
+            #     })
+            #     np.set_printoptions(precision=2, suppress=True)
+            #     from pprint import pprint
+            #     # {None: 0, '': 1, u'NN': 2, u'NNP': 3, u'IN': 4}
+            #     # print("y_pos:", y_pos.shape); pprint(y_pos[xx_i][xx_f:xx_l])
+            #     # print("y[y_pos]:", y['y_pos'].shape); pprint(y['y_pos'][xx_i][xx_f:xx_l])
+            #     print("y_pdtbmark:", y_pdtbmark.shape); pprint(y_pdtbmark[xx_i][xx_f:xx_l])
+            #     print("y[y_pdtbmark]:", y['y_pdtbmark'].shape); pprint(y['y_pdtbmark'][xx_i][xx_f:xx_l])
+            # except:
+            #     pass
 
         loss_avg /= len(train_doc_ids) / float(batch_size)
         time_1 = time.time()
         log.info("  loss avg: {:.2e}, min: {:.2e}, max: {:.2e}, time: {:.2f}s".format(loss_avg, loss_min, loss_max, time_1 - time_0))
 
-        # # validate model on training dataset
-        # relations_list = []
-        # for batch_i, doc_id in enumerate(train_doc_ids):
+        # validate model on training dataset
+        relations_list = []
+        for batch_i, doc_id in enumerate(train_doc_ids):
 
-        #     # prepare batch data
-        #     doc_ids = [doc_id]
-        #     x_word_pad, x_word_rand = build_x_word(doc_ids, train_words, word2id, word_crop, max_len)
+            # prepare batch data
+            doc_ids = [doc_id]
+            x_word_pad, x_word_rand = build_x_word(doc_ids, train_words, word2id, word_crop, max_len)
 
-        #     # interpret predictions as relations
-        #     y = model.predict({
-        #         'x_word_pad': x_word_pad,
-        #         'x_word_rand': x_word_rand,
-        #     })
-        #     all_relations = pdtbpair.decode_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
-        #     relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
+            # interpret predictions as relations
+            y = model.predict({
+                'x_word_pad': x_word_pad,
+                'x_word_rand': x_word_rand,
+            })
+            all_relations = pdtbpair.decode_y_pdtbpair(doc_ids, train_words, y['y_pdtbpair'], pdtbpair_offsets, pdtbpair2id, pdtbpair2id_weights, max_len, rtype, rsense)
+            relations_list.extend([ r  for doc_id in doc_ids for r in all_relations[doc_id] ])
 
-        # # evaluate relations on training dataset
-        # train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
-        # time_2 = time.time()
-        # log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.2f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
-        # if len(relations_list) > 0 and (train_precision > 0. or train_recall > 0. or train_f1 > 0.):
-        #     print "  WOOHOOO!!!"
+        # evaluate relations on training dataset
+        train_precision, train_recall, train_f1 = scorer.evaluate_relation(train_relations_list, relations_list)
+        time_2 = time.time()
+        log.info("  train precision: {:.4f}, recall: {:.4f}, f1: {:.4f}, relations: {}/{}, time: {:.2f}s".format(train_precision, train_recall, train_f1, len(relations_list), len(train_relations_list), time_2 - time_1))
+        if len(relations_list) > 0 and (train_precision > 0. or train_recall > 0. or train_f1 > 0.):
+            print "  WOOHOOO!!!"
 
         #XXX
-        train_precision = train_recall = train_f1 = -1
-        time_2 = time.time()
+        # train_precision = train_recall = train_f1 = -1
+        # time_2 = time.time()
         valid_precision = valid_recall = valid_f1 = -1
         time_3 = time.time()
 

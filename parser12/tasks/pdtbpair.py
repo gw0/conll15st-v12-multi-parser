@@ -28,22 +28,22 @@ def pdtbpair_model(model, ins, max_len, embedding_dim, pdtbpair2id_size, pdtbpai
     # dense neural network on word-context pairs (doc, time_pad, offset, pdtbpair2id)
     #1
     #model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
-    #model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
+    #model.add_node(Activation('sigmoid'), name=pre + '_act', input=pre + '_dense')
 
     #2
     model.add_node(TimeDistributedDense2(2 * embedding_dim, init='he_uniform'), name=pre + '_dense2', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
-    model.add_node(Activation('relu'), name=pre + '_act2', input=pre + '_dense2')
+    model.add_node(Activation('sigmoid'), name=pre + '_act2', input=pre + '_dense2')
     #model.add_node(Dropout(0.1), name=pre + '_act2', input=pre + '_act2_')
     model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', input=pre + '_act2')
-    model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
+    model.add_node(Activation('sigmoid'), name=pre + '_act', input=pre + '_dense')
 
     #3
     # model.add_node(Permute(dims=(1, 3, 2)), name=pre + '_permute2', inputs=[pre + '_repeat', pre + '_offsets'], merge_mode='concat')
     # model.add_node(TimeDistributedDense2(len(pdtbpair_offsets), init='he_uniform'), name=pre + '_dense2', input=pre + '_permute2')
-    # model.add_node(Activation('relu'), name=pre + '_sigmoid2', input=pre + '_dense2')
+    # model.add_node(Activation('sigmoid'), name=pre + '_sigmoid2', input=pre + '_dense2')
     # model.add_node(Permute(dims=(1, 3, 2)), name=pre + '_unpermute2', input=pre + '_sigmoid2')
     # model.add_node(TimeDistributedDense2(pdtbpair2id_size, init='he_uniform'), name=pre + '_dense', input=pre + '_unpermute2')
-    # model.add_node(Activation('relu'), name=pre + '_act', input=pre + '_dense')
+    # model.add_node(Activation('sigmoid'), name=pre + '_act', input=pre + '_dense')
     return pre + '_act'
 
 
