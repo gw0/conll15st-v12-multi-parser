@@ -12,36 +12,36 @@ DIST_PACKAGES='/usr/lib/python*/dist-packages'
 
 # Initialization
 sudo() { [ -x "/usr/bin/sudo" ] && /usr/bin/sudo "$@" || "$@"; }
-[ ! -x "/usr/bin/$PYTHON_EXE" ] && sudo aptitude install "$PYTHON_EXE"
+[ ! -x "/usr/bin/$PYTHON_EXE" ] && sudo apt-get install -y "$PYTHON_EXE"
 
 cd "${0%/*}"
 virtualenv --prompt="$NAME" --python="$PYTHON_EXE"  venv || exit 1
 source venv/bin/activate
 [ ! -e "$SRC" ] && mkdir "$SRC"
 
+# Prerequisites for pip
+sudo apt-get install -y git
+
 # Prerequisites for Theano
-sudo aptitude install python-numpy python-scipy
+sudo apt-get install -y python-numpy python-scipy
 [ ! -d $SITE_PACKAGES/numpy ] && cp -a $DIST_PACKAGES/numpy* $SITE_PACKAGES
 [ ! -d $SITE_PACKAGES/scipy ] && cp -a $DIST_PACKAGES/scipy* $SITE_PACKAGES
 
 # Prerequisites for h5py
-sudo aptitude install cython libhdf5-dev
-[ ! -d $SITE_PACKAGES/Cython ] && cp -a $DIST_PACKAGES/[Cc]ython* $SITE_PACKAGES
+#sudo apt-get install -y cython libhdf5-8 libhdf5-dev
+#[ ! -d $SITE_PACKAGES/Cython ] && cp -a $DIST_PACKAGES/[Cc]ython* $SITE_PACKAGES
 
 # Prerequisites for Keras
-sudo aptitude install libyaml-dev
+sudo apt-get install -y python-h5py libyaml-dev graphviz
+[ ! -d $SITE_PACKAGES/h5py ] && cp -a $DIST_PACKAGES/h5py* $SITE_PACKAGES
 
 # Prerequisites for matplotlib
-#sudo aptitude install libfreetype6-dev
+#sudo apt-get install -y libfreetype6-dev
 
 # Requirements
 pip install git+https://github.com/Theano/Theano.git
-pip install h5py
 pip install pydot-ng
 pip install git+https://github.com/fchollet/keras.git
-
-# Workarounds for keras
-sed -i 's/^import pydot$/import pydot_ng as pydot/' $SRC/keras/utils/visualize_util.py
 
 echo
 echo "Use: . venv/bin/activate"

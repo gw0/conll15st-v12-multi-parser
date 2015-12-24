@@ -13,8 +13,7 @@ RUN apt-get update -qq \
  && apt-get install -y \
     python \
     python-pip \
-    python-virtualenv \
-    pypy
+    python-virtualenv
 
 # setup virtualenv
 ADD requirements.sh ./
@@ -30,11 +29,11 @@ ADD parser12/ ./parser12/
 
 RUN useradd -r -d /srv parser \
  && mkdir -p /srv/ex \
- && chown -R parser:parser /srv/ex
+ && chown -R parser:parser /srv
 
 # expose interface
 VOLUME /srv/ex
 
 USER parser
-ENTRYPOINT ["/srv/venv/bin/pypy", "/srv/parser12/run.py"]
+ENTRYPOINT ["/srv/venv/bin/python", "/srv/parser12/run.py"]
 CMD ["ex/ex12", "conll15st-train", "conll15st-dev", "conll15st-dev", "ex/ex12"]
