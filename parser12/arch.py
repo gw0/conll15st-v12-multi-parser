@@ -28,8 +28,8 @@ def build(max_len, embedding_dim, word2id_size, skipgram_offsets, pos2id_size, p
     # input: word ids with masked post-padding (doc, time_pad)
     model.add_input(name='x_word_pad', input_shape=(None,), dtype='int')
 
-    # # input: word ids with random post-padding (doc, time_pad)
-    # model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
+    # input: word ids with random post-padding (doc, time_pad)
+    model.add_input(name='x_word_rand', input_shape=(None,), dtype='int')
 
     # shared 1: word embedding layer (doc, time_pad, emb)
     model.add_node(Embedding(word2id_size, embedding_dim, input_length=max_len, init='glorot_uniform'), name='shared_1', input='x_word_pad')

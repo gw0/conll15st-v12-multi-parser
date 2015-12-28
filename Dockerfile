@@ -1,5 +1,10 @@
 # PDTB-style discourse parser (CoNLL15st format).
 #
+# Example:
+#   NAME=conll15st-s4-all
+#   docker build -t $NAME .
+#   docker run -d -v /srv/storage/conll15st-ex:/srv/ex --name $NAME-train $NAME ex/$NAME-train conll15st-train conll15st-dev x x
+#
 # Author: GW [http://gw.tnode.com/] <gw.2015@tnode.com>
 
 FROM debian:jessie
