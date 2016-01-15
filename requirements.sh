@@ -43,6 +43,9 @@ pip install git+https://github.com/Theano/Theano.git
 pip install pydot-ng
 pip install git+https://github.com/fchollet/keras.git
 
+# Development
+pip install pytest
+
 echo
 echo "Use: . venv/bin/activate"
 echo

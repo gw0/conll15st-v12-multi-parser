@@ -3,4 +3,5 @@
 *.gz
 *.tgz
 venv
+docs/CoNLL_2015_Eval_Agreement.*
 conll15st-*
