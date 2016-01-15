@@ -1,0 +1,185 @@
+input_config:
+- dtype: int
+  input_shape: !!python/tuple [null]
+  name: x_word_pad
+input_order: [x_word_pad]
+loss: {y_pdtbpair: binary_crossentropy}
+name: Graph
+node_config:
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: x_word_pad
+  inputs: &id001 []
+  merge_mode: concat
+  name: shared_1
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_1
+  inputs: *id001
+  merge_mode: concat
+  name: shared_2_fwd
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_1
+  inputs: *id001
+  merge_mode: concat
+  name: shared_2_bck
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: null
+  inputs: [shared_1, shared_2_fwd, shared_2_bck]
+  merge_mode: concat
+  name: shared_2
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_2
+  inputs: *id001
+  merge_mode: concat
+  name: shared_3_fwd
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_2
+  inputs: *id001
+  merge_mode: concat
+  name: shared_3_bck
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: null
+  inputs: [shared_2, shared_3_fwd, shared_3_bck]
+  merge_mode: concat
+  name: shared_3
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_3
+  inputs: *id001
+  merge_mode: concat
+  name: shared_4_fwd
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_3
+  inputs: *id001
+  merge_mode: concat
+  name: shared_4_bck
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: null
+  inputs: [shared_3, shared_4_fwd, shared_4_bck]
+  merge_mode: concat
+  name: shared_4
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_4
+  inputs: *id001
+  merge_mode: concat
+  name: pdtbpair_repeat
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: shared_4
+  inputs: *id001
+  merge_mode: concat
+  name: pdtbpair_offsets
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: null
+  inputs: [pdtbpair_repeat, pdtbpair_offsets]
+  merge_mode: concat
+  name: pdtbpair_dense2
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: pdtbpair_dense2
+  inputs: *id001
+  merge_mode: concat
+  name: pdtbpair_act2
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: pdtbpair_act2
+  inputs: *id001
+  merge_mode: concat
+  name: pdtbpair_dense
+- concat_axis: -1
+  create_output: false
+  dot_axes: -1
+  input: pdtbpair_dense
+  inputs: *id001
+  merge_mode: concat
+  name: pdtbpair_act
+nodes:
+  pdtbpair_act: {activation: sigmoid, cache_enabled: true, name: Activation}
+  pdtbpair_act2: {activation: sigmoid, cache_enabled: true, name: Activation}
+  pdtbpair_dense: {W_constraint: null, W_regularizer: null, activation: linear, activity_regularizer: null,
+    b_constraint: null, b_regularizer: null, cache_enabled: true, init: he_uniform,
+    input_dim: null, input_length: null, name: TimeDistributedDense2, output_dim: 16}
+  pdtbpair_dense2: {W_constraint: null, W_regularizer: null, activation: linear, activity_regularizer: null,
+    b_constraint: null, b_regularizer: null, cache_enabled: true, init: he_uniform,
+    input_dim: null, input_length: null, name: TimeDistributedDense2, output_dim: 80}
+  pdtbpair_offsets:
+    axis: 1
+    cache_enabled: true
+    name: RollOffsets
+    offset_axis: 2
+    offsets: [-10, -9, -8, -7, -6, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+      10]
+  pdtbpair_repeat: {cache_enabled: true, n: 20, name: RepeatVector2}
+  shared_1:
+    W_constraint: null
+    W_regularizer: null
+    activity_regularizer: null
+    cache_enabled: true
+    init: glorot_uniform
+    input_dim: 6578
+    input_length: 1010
+    input_shape: !!python/tuple [6578]
+    mask_zero: false
+    name: Embedding
+    output_dim: 40
+  shared_2: {W_constraint: null, W_regularizer: null, activation: linear, activity_regularizer: null,
+    b_constraint: null, b_regularizer: null, cache_enabled: true, init: he_uniform,
+    input_dim: null, input_length: null, name: TimeDistributedDense, output_dim: 40}
+  shared_2_bck: {activation: sigmoid, cache_enabled: true, go_backwards: true, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+  shared_2_fwd: {activation: sigmoid, cache_enabled: true, go_backwards: false, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+  shared_3: {W_constraint: null, W_regularizer: null, activation: linear, activity_regularizer: null,
+    b_constraint: null, b_regularizer: null, cache_enabled: true, init: he_uniform,
+    input_dim: null, input_length: null, name: TimeDistributedDense, output_dim: 40}
+  shared_3_bck: {activation: sigmoid, cache_enabled: true, go_backwards: true, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+  shared_3_fwd: {activation: sigmoid, cache_enabled: true, go_backwards: false, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+  shared_4: {W_constraint: null, W_regularizer: null, activation: linear, activity_regularizer: null,
+    b_constraint: null, b_regularizer: null, cache_enabled: true, init: he_uniform,
+    input_dim: null, input_length: null, name: TimeDistributedDense, output_dim: 40}
+  shared_4_bck: {activation: sigmoid, cache_enabled: true, go_backwards: true, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+  shared_4_fwd: {activation: sigmoid, cache_enabled: true, go_backwards: false, init: he_uniform,
+    inner_activation: sigmoid, inner_init: orthogonal, input_dim: 40, input_length: null,
+    name: GRU, output_dim: 40, return_sequences: true, stateful: false}
+optimizer: {epsilon: 1.0e-06, lr: 0.0010000000474974513, name: RMSprop, rho: 0.8999999761581421}
+output_config:
+- concat_axis: -1
+  dot_axes: -1
+  input: pdtbpair_act
+  inputs: []
+  merge_mode: concat
+  name: y_pdtbpair
+output_order: [y_pdtbpair]
