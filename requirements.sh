@@ -1,5 +1,5 @@
 #!/bin/bash
-# Requirements installation for conll15st-multi-lstm-keras
+# Requirements installation for conll15st-v12-multi-parser
 #
 # Author: gw0 [http://gw.tnode.com/] <gw.2015@tnode.com>
 # License: All rights reserved

@@ -1,4 +1,4 @@
-conll15st-multi-parser-v12
+conll15st-v12-multi-parser
 ==========================
 
 Experiments for CoNLL 2015 Shared Task (Shallow Discourse Parsing) involving deep intermediate/layer-wise multi-task learning using shared representations and bidirectional GRU layers in Keras.
@@ -7,7 +7,7 @@ Experiments for CoNLL 2015 Shared Task (Shallow Discourse Parsing) involving dee
 
 - <http://www.cs.brandeis.edu/~clp/conll15st/>
 - <http://github.com/attapol/conll15st/>
-- <http://github.com/gw0/conll15st-multi-parser-v12/>
+- <http://github.com/gw0/conll15st-v12-multi-parser/>
 
 If you find anything useful, consider citing a **related conference paper**:
 
